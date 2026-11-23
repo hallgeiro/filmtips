@@ -88,7 +88,7 @@ app.post('/api/pin-login', async (c) => {
 app.get('/api/login-info', async (c) => {
 	const { results } = await c.env.DB.prepare(`SELECT username FROM user_pins`).all<{ username: string }>()
 	const users = getUsers(c.env)
-	return c.json({ pinUsers: users.filter((u) => results.some((r) => r.username === u)) })
+	return c.json({ users, pinUsers: users.filter((u) => results.some((r) => r.username === u)) })
 })
 
 // Alt under her krever innlogging.

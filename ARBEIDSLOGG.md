@@ -86,6 +86,8 @@ Sammendrag av oppsett, arkitektur og utviklingsarbeid. Filmtips er en ikke-komme
 
 15. Admin kan lage PIN: velger admin et navn uten PIN, tilbys det å lage PIN (tidligere ble admin aldri spurt). «Nullstill PIN» tømmer valgt navn, så navnet må velges på nytt for å lage ny PIN.
 
+16. Innloggingsskjermen: navn velges først. Navn med PIN får PIN-felt (med lenke til passord), navn uten PIN får passordfelt og blir spurt om å lage 6-sifret PIN rett etter innlogging. `GET /api/login-info` returnerer `users` og `pinUsers`. Sist valgte navn huskes i localStorage.
+
 ## Kjente begrensninger og mulige neste steg
 
 - Rundt 30 titler må rettes manuelt med «Rett match» (IMDb-kode eller TMDB-lenke). Det koster ingen OMDb-oppslag.

@@ -30,25 +30,44 @@ const dice = (n) => `🎲 ${n}`;
 
 /* ---------- Innlogging ---------- */
 let pinUsers = [];
+const selectedLoginUser = () => $('#login-user').value;
+
 function showLoginMode(pinMode) {
+	const name = selectedLoginUser();
 	$('#pin-login-form').classList.toggle('hidden', !pinMode);
 	$('#login-form').classList.toggle('hidden', pinMode);
-	$('#show-pin').classList.toggle('hidden', pinUsers.length === 0);
+	$('#show-pin').classList.toggle('hidden', !pinUsers.includes(name));
+	$('#login-help').textContent = pinUsers.includes(name)
+		? 'Skriv inn det felles passordet.'
+		: 'Skriv inn passordet du har fått. Etterpå lager du din egen PIN.';
+	$('#pin-login-error').classList.add('hidden');
+	$('#login-error').classList.add('hidden');
 	(pinMode ? $('#login-pin') : $('#password')).focus();
 }
 
 async function showLogin() {
 	$('#app').classList.add('hidden');
 	$('#login').classList.remove('hidden');
+	let loginUsers = [];
 	try {
-		({ pinUsers } = await (await fetch('/api/login-info')).json());
+		({ users: loginUsers, pinUsers } = await (await fetch('/api/login-info')).json());
 	} catch {
 		pinUsers = [];
 	}
-	$('#login-user').innerHTML = pinUsers.map((u) => `<option>${esc(u)}</option>`).join('');
-	showLoginMode(pinUsers.length > 0);
+	let last = '';
+	try {
+		last = localStorage.getItem('filmtips_login_user') || '';
+	} catch {}
+	$('#login-user').innerHTML = loginUsers.map((u) => `<option ${u === last ? 'selected' : ''}>${esc(u)}</option>`).join('');
+	showLoginMode(pinUsers.includes(selectedLoginUser()));
 }
 
+$('#login-user').addEventListener('change', () => {
+	try {
+		localStorage.setItem('filmtips_login_user', selectedLoginUser());
+	} catch {}
+	showLoginMode(pinUsers.includes(selectedLoginUser()));
+});
 $('#show-password').addEventListener('click', () => showLoginMode(false));
 $('#show-pin').addEventListener('click', () => showLoginMode(true));
 
@@ -72,9 +91,11 @@ $('#login-form').addEventListener('submit', async (e) => {
 	e.preventDefault();
 	$('#login-error').classList.add('hidden');
 	try {
+		const name = selectedLoginUser();
 		await api('/api/login', { method: 'POST', body: JSON.stringify({ password: $('#password').value }) });
 		$('#password').value = '';
 		await start();
+		if (name && !hasPin.includes(name) && (await askPin(name))) await refreshConfig(); // lag PIN rett etter passord
 	} catch (err) {
 		$('#login-error').textContent = err.message;
 		$('#login-error').classList.remove('hidden');
