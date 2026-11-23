@@ -61,7 +61,7 @@ Sammendrag av oppsett, arkitektur og utviklingsarbeid. Filmtips er en ikke-komme
 - `POST /api/admin/library/import`, `.../rematch` (kryssjekk), `.../add`
 - `PATCH /api/admin/library/:id`
 - `GET /api/admin/barcode/:code`
-- `POST /api/login`, `/api/identity`, `/api/admin/login`, `/api/admin/reset-pin`
+- `POST /api/login`, `/api/pin-login`, `/api/identity`, `/api/admin/login`, `/api/admin/reset-pin`
 
 ## Kronologi
 
@@ -81,6 +81,8 @@ Sammendrag av oppsett, arkitektur og utviklingsarbeid. Filmtips er en ikke-komme
 12. Bibliotek delt i fysisk bibliotek og filsamling.
 
 13. Innlogging: gyldig PIN-identitet (`filmtips_user`) gir nå også tilgang, og passord-økten fornyes ved bruk (`/api/config`). Logg ut fjerner begge cookiene. Passord kreves bare på ny enhet, ved slettede cookies eller etter passordbytte.
+
+14. PIN som passord: på innloggingsskjermen kan navn med PIN logge inn med navn + 6-sifret PIN (`POST /api/pin-login`, `GET /api/login-info`), uten felles passord. Sperre: 5 feil forsøk gir 15 min lås. Nye PIN-er må være 6 siffer (første PIN for et navn krever fortsatt felles passord). Eldre 4–5-sifrede PIN-er virker bare etter passordinnlogging; admin kan nullstille dem for å få 6 siffer.
 
 ## Kjente begrensninger og mulige neste steg
 

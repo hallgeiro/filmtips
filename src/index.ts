@@ -67,6 +67,30 @@ app.post('/api/logout', (c) => {
 	return c.json({ ok: true })
 })
 
+// Innlogging med navn + PIN (6 siffer) uten felles passord. Bare for navn som allerede har PIN.
+app.post('/api/pin-login', async (c) => {
+	if (!c.env.APP_PASSWORD) return c.json({ error: 'Serverfeil: secret APP_PASSWORD er ikke satt på denne Workeren' }, 500)
+	const body = await c.req.json<{ username?: string; pin?: string }>().catch(() => ({} as { username?: string; pin?: string }))
+	const name = String(body.username ?? '').trim()
+	const pin = String(body.pin ?? '').trim()
+	if (!getUsers(c.env).includes(name)) return c.json({ error: 'Ukjent navn' }, 400)
+	const row = await getPinRow(c, name)
+	if (!row) return c.json({ error: 'Dette navnet har ingen PIN ennå. Logg inn med passord først.' }, 403)
+	if (!PIN_RE_NEW.test(pin)) return c.json({ error: 'PIN må være 6 siffer. Har du en eldre PIN, logg inn med passord og be admin nullstille den.' }, 400)
+	const err = await checkPin(c, name, row, pin)
+	if (err) return err
+	await setIdentityCookie(c, name, row.pin_hash)
+	await setSessionCookie(c)
+	return c.json({ ok: true, identity: name })
+})
+
+// Navn med PIN, til innloggingsskjermen (navnene står uansett i det åpne repoet)
+app.get('/api/login-info', async (c) => {
+	const { results } = await c.env.DB.prepare(`SELECT username FROM user_pins`).all<{ username: string }>()
+	const users = getUsers(c.env)
+	return c.json({ pinUsers: users.filter((u) => results.some((r) => r.username === u)) })
+})
+
 // Alt under her krever innlogging.
 // Gyldig passord-økt ELLER gyldig PIN-identitet (signert med passordet, så passordbytte logger ut begge) gir tilgang.
 // Økten fornyes ved bruk, slik at man ikke må taste passordet på nytt så lenge appen brukes.
@@ -93,7 +117,8 @@ async function isAdmin(c: Ctx): Promise<boolean> {
 }
 
 // ---------- PIN og identitet ----------
-const PIN_RE = /^\d{4,6}$/
+const PIN_RE_NEW = /^\d{6}$/ // nye PIN-er og PIN-innlogging: nøyaktig 6 siffer
+const PIN_RE_LEGACY = /^\d{4,6}$/ // eldre PIN-er (4–6 siffer) kan fortsatt verifiseres
 const MAX_ATTEMPTS = 5
 const LOCK_MINUTES = 15
 
@@ -140,47 +165,59 @@ app.get('/api/config', async (c) => {
 	})
 })
 
-// Velg navn med PIN. Finnes ingen PIN for navnet ennå, opprettes den (første som velger navnet får det).
-app.post('/api/identity', async (c) => {
-	const body = await c.req.json<{ username?: string; pin?: string }>().catch(() => ({} as { username?: string; pin?: string }))
-	const name = String(body.username ?? '').trim()
-	const pin = String(body.pin ?? '').trim()
-	if (!getUsers(c.env).includes(name)) return c.json({ error: 'Ukjent navn' }, 400)
-	if (!PIN_RE.test(pin)) return c.json({ error: 'PIN må være 4–6 siffer' }, 400)
-
-	let row = await getPinRow(c, name)
-	if (!row) {
-		const salt = toHex(crypto.getRandomValues(new Uint8Array(16)))
-		const pinHash = await hashPin(pin, salt)
-		await c.env.DB.prepare(`INSERT OR IGNORE INTO user_pins (username, pin_hash, salt) VALUES (?, ?, ?)`).bind(name, pinHash, salt).run()
-		row = await getPinRow(c, name)
-		if (!row || row.pin_hash !== pinHash) return c.json({ error: 'Navnet ble tatt av noen andre akkurat nå. Prøv igjen.' }, 409)
-	} else {
-		if (row.locked) return c.json({ error: `For mange feil forsøk. Prøv igjen om ${LOCK_MINUTES} minutter.` }, 429)
-		const ok = await safeEqual(await hashPin(pin, row.salt), row.pin_hash)
-		if (!ok) {
-			const failed = row.failed_attempts + 1
-			if (failed >= MAX_ATTEMPTS) {
-				await c.env.DB.prepare(`UPDATE user_pins SET failed_attempts = 0, locked_until = datetime('now', ?) WHERE username = ?`)
-					.bind(`+${LOCK_MINUTES} minutes`, name)
-					.run()
-				return c.json({ error: `For mange feil forsøk. Låst i ${LOCK_MINUTES} minutter.` }, 429)
-			}
-			await c.env.DB.prepare(`UPDATE user_pins SET failed_attempts = ? WHERE username = ?`).bind(failed, name).run()
-			return c.json({ error: `Feil PIN (${MAX_ATTEMPTS - failed} forsøk igjen)` }, 403)
+// Sjekker PIN mot lagret hash med sperre ved for mange feil. Returnerer feilsvar, eller null hvis PIN er riktig.
+async function checkPin(c: Ctx, name: string, row: PinRow, pin: string): Promise<Response | null> {
+	if (row.locked) return c.json({ error: `For mange feil forsøk. Prøv igjen om ${LOCK_MINUTES} minutter.` }, 429)
+	const ok = await safeEqual(await hashPin(pin, row.salt), row.pin_hash)
+	if (!ok) {
+		const failed = row.failed_attempts + 1
+		if (failed >= MAX_ATTEMPTS) {
+			await c.env.DB.prepare(`UPDATE user_pins SET failed_attempts = 0, locked_until = datetime('now', ?) WHERE username = ?`)
+				.bind(`+${LOCK_MINUTES} minutes`, name)
+				.run()
+			return c.json({ error: `For mange feil forsøk. Låst i ${LOCK_MINUTES} minutter.` }, 429)
 		}
-		if (row.failed_attempts > 0) {
-			await c.env.DB.prepare(`UPDATE user_pins SET failed_attempts = 0, locked_until = NULL WHERE username = ?`).bind(name).run()
-		}
+		await c.env.DB.prepare(`UPDATE user_pins SET failed_attempts = ? WHERE username = ?`).bind(failed, name).run()
+		return c.json({ error: `Feil PIN (${MAX_ATTEMPTS - failed} forsøk igjen)` }, 403)
 	}
+	if (row.failed_attempts > 0) {
+		await c.env.DB.prepare(`UPDATE user_pins SET failed_attempts = 0, locked_until = NULL WHERE username = ?`).bind(name).run()
+	}
+	return null
+}
 
-	setCookie(c, IDENTITY_COOKIE, `${name}.${await identitySig(c, name, row.pin_hash)}`, {
+async function setIdentityCookie(c: Ctx, name: string, pinHash: string) {
+	setCookie(c, IDENTITY_COOKIE, `${name}.${await identitySig(c, name, pinHash)}`, {
 		httpOnly: true,
 		secure: new URL(c.req.url).protocol === 'https:',
 		sameSite: 'Lax',
 		path: '/',
 		maxAge: 60 * 60 * 24 * 365,
 	})
+}
+
+// Velg navn med PIN. Finnes ingen PIN for navnet ennå, opprettes den (første som velger navnet får det).
+app.post('/api/identity', async (c) => {
+	const body = await c.req.json<{ username?: string; pin?: string }>().catch(() => ({} as { username?: string; pin?: string }))
+	const name = String(body.username ?? '').trim()
+	const pin = String(body.pin ?? '').trim()
+	if (!getUsers(c.env).includes(name)) return c.json({ error: 'Ukjent navn' }, 400)
+
+	let row = await getPinRow(c, name)
+	if (!row) {
+		if (!PIN_RE_NEW.test(pin)) return c.json({ error: 'PIN må være 6 siffer' }, 400)
+		const salt = toHex(crypto.getRandomValues(new Uint8Array(16)))
+		const pinHash = await hashPin(pin, salt)
+		await c.env.DB.prepare(`INSERT OR IGNORE INTO user_pins (username, pin_hash, salt) VALUES (?, ?, ?)`).bind(name, pinHash, salt).run()
+		row = await getPinRow(c, name)
+		if (!row || row.pin_hash !== pinHash) return c.json({ error: 'Navnet ble tatt av noen andre akkurat nå. Prøv igjen.' }, 409)
+	} else {
+		if (!PIN_RE_LEGACY.test(pin)) return c.json({ error: 'PIN må være 4–6 siffer' }, 400)
+		const err = await checkPin(c, name, row, pin)
+		if (err) return err
+	}
+
+	await setIdentityCookie(c, name, row.pin_hash)
 	return c.json({ ok: true, identity: name })
 })
 

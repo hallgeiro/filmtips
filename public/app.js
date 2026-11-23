@@ -15,7 +15,7 @@ async function api(path, opts = {}) {
 		...opts,
 		headers: { 'content-type': 'application/json', ...(opts.headers || {}) },
 	});
-	if (res.status === 401 && path !== '/api/login' && path !== '/api/admin/login') {
+	if (res.status === 401 && path !== '/api/login' && path !== '/api/pin-login' && path !== '/api/admin/login') {
 		showLogin();
 		throw new Error('Ikke innlogget');
 	}
@@ -29,11 +29,44 @@ const fmtDate = (s) =>
 const dice = (n) => `🎲 ${n}`;
 
 /* ---------- Innlogging ---------- */
-function showLogin() {
+let pinUsers = [];
+function showLoginMode(pinMode) {
+	$('#pin-login-form').classList.toggle('hidden', !pinMode);
+	$('#login-form').classList.toggle('hidden', pinMode);
+	$('#show-pin').classList.toggle('hidden', pinUsers.length === 0);
+	(pinMode ? $('#login-pin') : $('#password')).focus();
+}
+
+async function showLogin() {
 	$('#app').classList.add('hidden');
 	$('#login').classList.remove('hidden');
-	$('#password').focus();
+	try {
+		({ pinUsers } = await (await fetch('/api/login-info')).json());
+	} catch {
+		pinUsers = [];
+	}
+	$('#login-user').innerHTML = pinUsers.map((u) => `<option>${esc(u)}</option>`).join('');
+	showLoginMode(pinUsers.length > 0);
 }
+
+$('#show-password').addEventListener('click', () => showLoginMode(false));
+$('#show-pin').addEventListener('click', () => showLoginMode(true));
+
+$('#pin-login-form').addEventListener('submit', async (e) => {
+	e.preventDefault();
+	$('#pin-login-error').classList.add('hidden');
+	try {
+		await api('/api/pin-login', {
+			method: 'POST',
+			body: JSON.stringify({ username: $('#login-user').value, pin: $('#login-pin').value.trim() }),
+		});
+		$('#login-pin').value = '';
+		await start();
+	} catch (err) {
+		$('#pin-login-error').textContent = err.message;
+		$('#pin-login-error').classList.remove('hidden');
+	}
+});
 
 $('#login-form').addEventListener('submit', async (e) => {
 	e.preventDefault();
@@ -100,7 +133,7 @@ function askPin(name) {
 		const creating = !hasPin.includes(name);
 		$('#pin-title').textContent = creating ? `Lag en PIN for ${name}` : `PIN for ${name}`;
 		$('#pin-help').textContent = creating
-			? 'Velg 4–6 siffer. Du bruker den når du velger dette navnet. Glemmer du den, kan admin nullstille den.'
+			? 'Velg 6 siffer. Du bruker den når du velger dette navnet. Glemmer du den, kan admin nullstille den.'
 			: 'Skriv inn PIN-en din.';
 		$('#pin2-wrap').classList.toggle('hidden', !creating);
 		$('#pin').value = '';
@@ -123,7 +156,7 @@ function askPin(name) {
 		$('#pin-form').onsubmit = async (e) => {
 			e.preventDefault();
 			const pin = $('#pin').value.trim();
-			if (!/^\d{4,6}$/.test(pin)) return showErr('PIN må være 4–6 siffer.');
+			if (!(creating ? /^\d{6}$/ : /^\d{4,6}$/).test(pin)) return showErr(creating ? 'PIN må være 6 siffer.' : 'PIN må være 4–6 siffer.');
 			if (creating && pin !== $('#pin2').value.trim()) return showErr('PIN-ene er ikke like.');
 			try {
 				await api('/api/identity', { method: 'POST', body: JSON.stringify({ username: name, pin }) });
