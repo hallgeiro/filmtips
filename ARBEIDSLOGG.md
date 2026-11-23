@@ -111,6 +111,8 @@ Sammendrag av oppsett, arkitektur og utviklingsarbeid. Filmtips er en ikke-komme
 
 27. «Mine lister» i filmvinduet: egen synlig knapp «➕ Opprett ny liste med denne filmen» (navn, rangert, «Opprett og legg til») i stedet for et skjult valg nederst i nedtrekkslisten.
 
+28. Anbefalingsskjemaet i filmvinduet heter «Anbefal denne filmen» (med forklaring) og knappen «⭐ Anbefal denne filmen». Har du anbefalt filmen fra før, står det «Din anbefaling ✓» og «Oppdater anbefalingen».
+
 ## Kjente begrensninger og mulige neste steg
 
 - Rundt 30 titler må rettes manuelt med «Rett match» (IMDb-kode eller TMDB-lenke). Det koster ingen OMDb-oppslag.

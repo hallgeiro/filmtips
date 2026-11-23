@@ -1475,12 +1475,13 @@ async function openMovie(movie) {
 		}
 
 		${isTv ? '' : `<form id="rec-form" class="mt-5 border-t border-slate-700 pt-4 space-y-3">
-			<h3 class="font-semibold">Din anbefaling</h3>
+			<h3 id="rec-title" class="font-semibold">Anbefal denne filmen</h3>
+			<p id="rec-help" class="text-xs text-slate-500">Anbefalingen vises under «Anbefalinger» for de andre. Karakteren din følger med, og kommentar er valgfritt.</p>
 			<p id="rec-rating" class="text-sm text-slate-400"></p>
 			<textarea id="comment" rows="3" maxlength="1000" placeholder="Kommentar (valgfritt)"
 				class="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-400"></textarea>
 			<p id="rec-error" class="text-red-400 text-sm hidden"></p>
-			<button class="w-full rounded-lg bg-amber-400 text-slate-900 font-semibold py-3 hover:bg-amber-300">Lagre anbefaling</button>
+			<button id="rec-btn" class="w-full rounded-lg bg-amber-400 text-slate-900 font-semibold py-3 hover:bg-amber-300">⭐ Anbefal denne filmen</button>
 		</form>`}`;
 
 	initModalLists(movie, mt);
@@ -1543,6 +1544,8 @@ async function openMovie(movie) {
 			rating = mine.rating;
 			$('#comment').value = mine.comment ?? '';
 			showRecRating();
+			$('#rec-title').textContent = 'Din anbefaling ✓';
+			$('#rec-btn').textContent = 'Oppdater anbefalingen';
 		}
 	} else if (!isTv) {
 		$('#recs').textContent = 'Kunne ikke hente anbefalinger.';
@@ -1564,7 +1567,7 @@ async function openMovie(movie) {
 		const err = $('#rec-error');
 		err.classList.add('hidden');
 		if (!me) return showErr('Velg navnet ditt øverst først.');
-		if (!rating) return showErr('Gi en karakter først (under «Karakter» over).');
+		if (!rating) return showErr('Gi filmen en karakter først, under «Karakter» lenger opp.');
 		try {
 			await api('/api/recommendations', {
 				method: 'POST',
