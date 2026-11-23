@@ -3,6 +3,8 @@
 	"name": "filmtips",
 	"main": "src/index.ts",
 	"compatibility_date": "2026-11-20",
+	// Eget domene (hallgeirolsen.com ligger i Cloudflare). Opprettes ved deploy.
+	"routes": [{ "pattern": "filmtips.hallgeirolsen.com", "custom_domain": true }],
 	"observability": {
 		"enabled": true
 	},
