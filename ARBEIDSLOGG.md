@@ -9,7 +9,7 @@ Sammendrag av oppsett, arkitektur og utviklingsarbeid. Filmtips er en ikke-komme
 - **Domene:** `filmtips.hallgeirolsen.com` (custom domain via `routes` i `wrangler.jsonc`).
 - **Database:** Cloudflare D1 `filmtips` (binding `DB`).
 - **Stack:** Cloudflare Workers + statiske assets, Hono (TypeScript), D1 (SQLite), vanilla JS + Tailwind CDN.
-- **Secrets** (Settings → *Runtime* variables and secrets, ikke Build-seksjonen): `APP_PASSWORD`, `TMDB_API_KEY`, `ADMIN_PASSWORD`.
+- **Secrets** (Settings → *Runtime* variables and secrets, ikke Build-seksjonen): `APP_PASSWORD`, `TMDB_API_KEY`, `ADMIN_PASSWORD`, og valgfritt `OMDB_API_KEY` (gratis, 1000 oppslag/dag). Secrets skal aldri inn i koden, siden repoet er public.
 - **Variabel:** `USERS` i `wrangler.jsonc` (`Hallgeir,Eirik,Daniel`). Nye brukere legges til der og pushes.
 - **Free plan:** maks 50 subrequests per request. Derfor små TMDB-batcher (8 titler) og `db.batch` mot D1.
 
@@ -18,7 +18,8 @@ Sammendrag av oppsett, arkitektur og utviklingsarbeid. Filmtips er en ikke-komme
 | Fil | Innhold |
 | --- | --- |
 | `wrangler.jsonc` | Worker-konfig, D1-binding, assets (`run_worker_first: ["/api/*"]`), custom domain, `USERS` |
-| `schema.sql` | Tabellene `recommendations`, `user_pins`, `library` + indekser |
+| `schema.sql` | Tabellene `recommendations`, `user_pins`, `library` (inkl. `media_type`, `collection`) + indekser |
+| `ARBEIDSLOGG.md` | Denne filen: struktur, arbeidsmåte og status |
 | `src/index.ts` | Hele backend (Hono): auth, TMDB-søk, anbefalinger, bibliotek, admin |
 | `public/index.html` | UI: login, faner (Søk / Anbefalinger / Bibliotek), modaler |
 | `public/app.js` | Frontend-logikk |
@@ -42,7 +43,12 @@ Sammendrag av oppsett, arkitektur og utviklingsarbeid. Filmtips er en ikke-komme
 - **Legg til enkeltfilm (admin):** strekkodeskanning (html5-qrcode + UPCitemdb) eller tittelsøk.
 - **TV-serier:** `media_type` `movie`/`tv` i biblioteket, egen providers-rute, «TV»-merking.
 - **Bedre titteloppslag:** fjerner «: Season N», «Complete Series», «Extended», «Director's Cut» osv. før søk. Prøver film først, så TV.
-- **Match på nytt (admin):** går gjennom titler uten treff, 8 om gangen.
+- **Kryssjekk treff (admin):** går gjennom titler uten treff og usikre treff, 3 om gangen (knappen i admin-linjen). Rekkefølge per tittel:
+  1. TMDB-søk begrenset til årstallet, pluss varianter (tall → romertall, uten punktum, del før « / ») og TMDB sine alternative titler.
+  2. Treffet godtas som sikkert bare hvis utgivelsesår (±2) og regissør fra CLZ stemmer. Mangler regissør, kreves lik tittel og nøyaktig samme år (usikkert treff).
+  3. Vanlig tittelmatching (film, så TV), deretter OMDb (IMDb-kode → TMDB), deretter Wikidata (titler på mange språk → IMDb-kode → TMDB). Treff fra disse er alltid «usikre».
+  4. Bokssett og samlinger («Collection», «Trilogy», «3 Films» osv.) merkes `collection = 1` og vises som «Samling», ikke som feil.
+- **Filmvinduet på mobil:** lukkeknappen (×) ligger utenfor det rullbare området og er alltid synlig. Vinduet starter alltid øverst og bruker `dvh`.
 
 ## Viktige API-ruter
 
@@ -50,7 +56,7 @@ Sammendrag av oppsett, arkitektur og utviklingsarbeid. Filmtips er en ikke-komme
 - `GET /api/movie/:id/providers`, `GET /api/tv/:id/providers`
 - `GET/POST/DELETE /api/recommendations`
 - `GET /api/library`, `GET /api/library/facets`
-- `POST /api/admin/library/import`, `.../rematch`, `.../add`
+- `POST /api/admin/library/import`, `.../rematch` (kryssjekk), `.../add`
 - `PATCH /api/admin/library/:id`
 - `GET /api/admin/barcode/:code`
 - `POST /api/login`, `/api/identity`, `/api/admin/login`, `/api/admin/reset-pin`
@@ -64,11 +70,24 @@ Sammendrag av oppsett, arkitektur og utviklingsarbeid. Filmtips er en ikke-komme
 5. CLZ-import av ca. 2800 titler, med formatvisning på anbefalinger.
 6. Rett match, strekkodeskanning, sortering på år/tiår/regissør.
 7. TV-serier, bedre titteloppslag, IMDb-kodesøk og «Match på nytt» (commit `bd14fd8`).
+8. Arbeidslogg (denne filen) og OMDb som reserve (`OMDB_API_KEY` satt som secret).
+9. Kryssjekk: regissør- og årskontroll, alternative titler, Wikidata og «Samling»-merking. Status etter første kjøring: ca. 30 titler gjenstår å rette manuelt.
+10. Mobil-rettelser i filmvinduet (lukkeknapp, scrollposisjon). En feil underveis fjernet midlertidig alle dialoger fra `index.html`. Den ble rettet umiddelbart (commit `88a6ee6`).
 
 ## Kjente begrensninger og mulige neste steg
 
-- Titler som bokssett og samlinger blir trolig fortsatt uten treff og må rettes manuelt.
-- Mulig reserve: OMDb (gratis nøkkel, 1000 kall/dag) hvis mange titler blir stående uten treff.
+- Rundt 30 titler må rettes manuelt med «Rett match» (IMDb-kode eller TMDB-lenke). Det koster ingen OMDb-oppslag.
+- Letterboxd og IMDb har ikke åpent API og brukes ikke direkte. OMDb og Wikidata dekker mye av det samme.
+- Free plan tillater maks 50 oppslag per request, så kryssjekken tar bare 3 titler om gangen og kan bruke noen minutter. Siden må stå åpen mens den kjører.
 - UPCitemdb-strekkodeoppslag er begrenset til 100 per dag.
 - Wrangler CLI kan ikke kjøres lokalt hos bruker (gruppepolicy). Alt gjøres via dashboard og GitHub.
 - Ved databaseendringer må `ALTER TABLE` kjøres mot remote D1. `schema.sql` brukes bare for ny database.
+
+## Arbeidsmåte
+
+- **Utvikling:** kode redigeres i arbeidsmappen, sjekkes lokalt (`node --check`, `tsc`, SQLite-tester av spørringer), og pushes til `main`. Workers Builds deployer automatisk.
+- **Databaseendringer:** `ALTER TABLE` kjøres mot remote D1 (Cloudflare-connector eller dashboard) *før* koden som bruker kolonnen pushes. `schema.sql` oppdateres samtidig.
+- **Secrets og variabler:** settes i Cloudflare-dashboardet under Runtime. `USERS` endres i `wrangler.jsonc`.
+- **Etter deploy:** vent 1–2 minutter, last siden på nytt (lukk fanen på mobil ved cache-problemer).
+- **Commits:** korte norske meldinger, én endring per commit. Pass på at store søk-og-erstatt-skript ikke treffer flere steder enn tiltenkt (se punkt 10 i kronologien).
+- **Admin-rutiner:** importer CLZ-CSV (8 titler om gangen), kjør «Kryssjekk treff», se gjennom «⚠ Å sjekke», rett resten med «Rett match», legg til enkeltfilmer med strekkode eller tittelsøk.
