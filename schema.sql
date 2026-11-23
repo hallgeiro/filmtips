@@ -38,12 +38,24 @@ CREATE TABLE IF NOT EXISTS seen_films (
   poster_path TEXT,
   username    TEXT    NOT NULL,
   seen_at     TEXT    NOT NULL DEFAULT (datetime('now')),
-  how         TEXT,                                    -- kino, streaming, bluray, 4k, dvd, fil, tv, annet (valgfritt)
-  seen_on     TEXT,                                    -- YYYY-MM-DD, datoen filmen ble sett (valgfritt)
+  how         TEXT,                                    -- utgått: bruk viewings
+  seen_on     TEXT,                                    -- utgått: bruk viewings
   UNIQUE (tmdb_id, media_type, username)
 );
 -- Eksisterende database: ALTER TABLE seen_films ADD COLUMN how TEXT; ALTER TABLE seen_films ADD COLUMN seen_on TEXT;
 CREATE INDEX IF NOT EXISTS idx_seen_user ON seen_films (username, seen_at DESC);
+
+-- Visninger: en film kan sees flere ganger. Hver visning har egen måte og dato (begge valgfrie).
+CREATE TABLE IF NOT EXISTS viewings (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  tmdb_id    INTEGER NOT NULL,
+  media_type TEXT    NOT NULL DEFAULT 'movie',
+  username   TEXT    NOT NULL,
+  how        TEXT,                                     -- kino, streaming, bluray, 4k, dvd, fil, tv, annet
+  seen_on    TEXT,                                     -- YYYY-MM-DD
+  created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_viewings_film ON viewings (tmdb_id, media_type, username);
 
 -- Kommentarer på andres (og egne) anbefalinger
 CREATE TABLE IF NOT EXISTS rec_comments (

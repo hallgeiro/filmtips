@@ -408,11 +408,16 @@ app.get('/api/ratings', async (c) => {
 	const count = results.length
 	const avg = count ? Math.round((results.reduce((a, r) => a + r.rating, 0) / count) * 10) / 10 : null
 	// Hvem har sett filmen (avkrysset «sett» eller gitt karakter)
-	const { results: seenRows } = await c.env.DB.prepare(`SELECT username, how, seen_on FROM seen_films WHERE tmdb_id = ? AND media_type = ?`)
+	const { results: seenRows } = await c.env.DB.prepare(`SELECT username FROM seen_films WHERE tmdb_id = ? AND media_type = ?`)
 		.bind(tmdbId, mediaType)
-		.all<{ username: string; how: string | null; seen_on: string | null }>()
+		.all<{ username: string }>()
+	const { results: viewings } = await c.env.DB.prepare(
+		`SELECT id, username, how, seen_on FROM viewings WHERE tmdb_id = ? AND media_type = ? ORDER BY COALESCE(seen_on, '') DESC, id DESC`,
+	)
+		.bind(tmdbId, mediaType)
+		.all<{ id: number; username: string; how: string | null; seen_on: string | null }>()
 	const seen = [...new Set([...seenRows.map((r) => r.username), ...results.map((r) => r.username)])]
-	return c.json({ results, count, avg, seen, seen_details: seenRows })
+	return c.json({ results, count, avg, seen, viewings })
 })
 
 // Gi (eller fjern, med rating: null) din karakter på en film eller serie
@@ -476,21 +481,70 @@ app.post('/api/seen', async (c) => {
 	const title = String(b.title ?? '').trim()
 	const poster_path = typeof b.poster_path === 'string' && /^\/[\w.-]+$/.test(b.poster_path) ? b.poster_path : null
 	if (!title || title.length > 200) return c.json({ error: 'Ugyldig tittel' }, 400)
-	// Med `how` og/eller `seen_on` i forespørselen lagres også hvordan og når (null fjerner verdien)
-	if ('how' in b || 'seen_on' in b) {
-		const how = b.how ? String(b.how) : null
-		if (how && !SEEN_HOW.includes(how)) return c.json({ error: 'Ugyldig valg for hvordan filmen ble sett' }, 400)
-		const seen_on = b.seen_on ? String(b.seen_on) : null
-		if (seen_on && (!/^\d{4}-\d{2}-\d{2}$/.test(seen_on) || Number.isNaN(Date.parse(seen_on)))) return c.json({ error: 'Ugyldig dato' }, 400)
-		await c.env.DB.prepare(
-			`INSERT INTO seen_films (tmdb_id, media_type, title, year, poster_path, username, how, seen_on) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-			 ON CONFLICT (tmdb_id, media_type, username) DO UPDATE SET how = excluded.how, seen_on = excluded.seen_on`,
-		)
-			.bind(tmdb_id, media_type, title, yearOf(b.year), poster_path, who.user, how, seen_on)
-			.run()
-		return c.json({ ok: true })
-	}
 	await markSeen(c, { tmdb_id, media_type, title, year: yearOf(b.year), poster_path, username: who.user })
+	return c.json({ ok: true })
+})
+
+// Visninger: en film kan sees flere ganger, hver med egen måte (how) og dato (seen_on). Å legge til en visning markerer filmen som sett.
+function viewingFields(b: { how?: unknown; seen_on?: unknown }): { how: string | null; seen_on: string | null } | string {
+	const how = b.how ? String(b.how) : null
+	if (how && !SEEN_HOW.includes(how)) return 'Ugyldig valg for hvordan filmen ble sett'
+	const seen_on = b.seen_on ? String(b.seen_on) : null
+	if (seen_on && (!/^\d{4}-\d{2}-\d{2}$/.test(seen_on) || Number.isNaN(Date.parse(seen_on)))) return 'Ugyldig dato'
+	return { how, seen_on }
+}
+
+app.post('/api/viewings', async (c) => {
+	const b = await c.req.json<any>().catch(() => null)
+	if (!b) return c.json({ error: 'Ugyldig JSON' }, 400)
+	const who = await actAs(c, b.username)
+	if ('error' in who) return c.json({ error: who.error }, who.status)
+	const tmdb_id = Number(b.tmdb_id)
+	const media_type = b.media_type === 'tv' ? 'tv' : 'movie'
+	const title = String(b.title ?? '').trim()
+	const poster_path = typeof b.poster_path === 'string' && /^\/[\w.-]+$/.test(b.poster_path) ? b.poster_path : null
+	if (!Number.isInteger(tmdb_id) || tmdb_id <= 0) return c.json({ error: 'Ugyldig film' }, 400)
+	if (!title || title.length > 200) return c.json({ error: 'Ugyldig tittel' }, 400)
+	const f = viewingFields(b)
+	if (typeof f === 'string') return c.json({ error: f }, 400)
+	const count = await c.env.DB.prepare(`SELECT COUNT(*) AS n FROM viewings WHERE tmdb_id = ? AND media_type = ? AND username = ?`)
+		.bind(tmdb_id, media_type, who.user)
+		.first<{ n: number }>()
+	if ((count?.n ?? 0) >= 50) return c.json({ error: 'For mange visninger på samme film (maks 50)' }, 400)
+	await markSeen(c, { tmdb_id, media_type, title, year: yearOf(b.year), poster_path, username: who.user })
+	const res = await c.env.DB.prepare(`INSERT INTO viewings (tmdb_id, media_type, username, how, seen_on) VALUES (?, ?, ?, ?, ?)`)
+		.bind(tmdb_id, media_type, who.user, f.how, f.seen_on)
+		.run()
+	return c.json({ ok: true, id: res.meta.last_row_id }, 201)
+})
+
+// Egne visninger kan endres og slettes av eier, alle av admin
+async function ownViewing(c: Ctx, id: number) {
+	const row = await c.env.DB.prepare(`SELECT id, username FROM viewings WHERE id = ?`).bind(id).first<{ id: number; username: string }>()
+	if (!row) return { error: 'Visningen finnes ikke', status: 404 as const }
+	if (!(await isAdmin(c)) && (await getIdentity(c)) !== row.username) return { error: 'Bare eieren kan endre visningen', status: 403 as const }
+	return { row }
+}
+
+app.patch('/api/viewings/:id', async (c) => {
+	const id = Number(c.req.param('id'))
+	if (!Number.isInteger(id)) return c.json({ error: 'Ugyldig forespørsel' }, 400)
+	const own = await ownViewing(c, id)
+	if ('error' in own) return c.json({ error: own.error }, own.status)
+	const b = await c.req.json<any>().catch(() => null)
+	if (!b) return c.json({ error: 'Ugyldig JSON' }, 400)
+	const f = viewingFields(b)
+	if (typeof f === 'string') return c.json({ error: f }, 400)
+	await c.env.DB.prepare(`UPDATE viewings SET how = ?, seen_on = ? WHERE id = ?`).bind(f.how, f.seen_on, id).run()
+	return c.json({ ok: true })
+})
+
+app.delete('/api/viewings/:id', async (c) => {
+	const id = Number(c.req.param('id'))
+	if (!Number.isInteger(id)) return c.json({ error: 'Ugyldig forespørsel' }, 400)
+	const own = await ownViewing(c, id)
+	if ('error' in own) return c.json({ error: own.error }, own.status)
+	await c.env.DB.prepare(`DELETE FROM viewings WHERE id = ?`).bind(id).run()
 	return c.json({ ok: true })
 })
 
@@ -498,14 +552,32 @@ app.post('/api/seen', async (c) => {
 app.get('/api/films/:username', async (c) => {
 	const name = c.req.param('username')
 	if (!getUsers(c.env).includes(name)) return c.json({ error: 'Ukjent navn' }, 400)
-	const { results } = await c.env.DB.prepare(
-		`SELECT s.tmdb_id, s.media_type, s.title, s.year, s.poster_path, s.how, s.seen_on, COALESCE(s.seen_on, substr(s.seen_at, 1, 10)) AS date, r.rating
-		 FROM seen_films s
-		 LEFT JOIN ratings r ON r.tmdb_id = s.tmdb_id AND r.media_type = s.media_type AND r.username = s.username
-		 WHERE s.username = ? ORDER BY date DESC, s.id DESC LIMIT 2000`,
-	)
-		.bind(name)
-		.all()
+	const [films, views] = await Promise.all([
+		c.env.DB.prepare(
+			`SELECT s.id, s.tmdb_id, s.media_type, s.title, s.year, s.poster_path, substr(s.seen_at, 1, 10) AS seen_day, r.rating
+			 FROM seen_films s
+			 LEFT JOIN ratings r ON r.tmdb_id = s.tmdb_id AND r.media_type = s.media_type AND r.username = s.username
+			 WHERE s.username = ? LIMIT 2000`,
+		)
+			.bind(name)
+			.all<any>(),
+		c.env.DB.prepare(`SELECT id, tmdb_id, media_type, how, seen_on FROM viewings WHERE username = ? ORDER BY COALESCE(seen_on, '') DESC, id DESC`)
+			.bind(name)
+			.all<{ id: number; tmdb_id: number; media_type: string; how: string | null; seen_on: string | null }>(),
+	])
+	const byFilm = new Map<string, typeof views.results>()
+	for (const v of views.results) {
+		const k = `${v.media_type}:${v.tmdb_id}`
+		byFilm.set(k, [...(byFilm.get(k) ?? []), v])
+	}
+	// `date` = siste visningsdato, ellers dagen filmen ble markert som sett. Nyeste først.
+	const results = films.results
+		.map((f) => {
+			const viewings = byFilm.get(`${f.media_type}:${f.tmdb_id}`) ?? []
+			const latest = viewings.map((v) => v.seen_on).filter(Boolean).sort().pop() ?? null
+			return { ...f, viewings, date: latest ?? f.seen_day }
+		})
+		.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : b.id - a.id))
 	return c.json({ results })
 })
 

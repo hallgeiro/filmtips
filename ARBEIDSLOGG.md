@@ -125,6 +125,8 @@ Sammendrag av oppsett, arkitektur og utviklingsarbeid. Filmtips er en ikke-komme
 
 34. Sett-ikonet er et enkelt strek-øye (inline SVG, `EYE` i app.js, arver tekstfargen) i stedet for emojien 👁 / 🎞, i fanen, i «Jeg har sett denne» og i «Sett»-merket.
 
+35. Flere visninger per film: tabell `viewings` (id, tmdb_id, media_type, username, how, seen_on), opprettet i remote D1 før push. Filmvinduet har «Visninger» med én rad per visning (måte + dato, endres og lagres med en gang, ✕ fjerner) og «＋ Legg til visning» (starter på dagens dato). Å legge til en visning markerer filmen som sett. `seen_films.how`/`seen_on` er utgått (aldri brukt til data). «Sett»-fanen viser siste visning og «N visninger», filteret på måte treffer filmer med minst én slik visning, og «Nyeste» sorterer på siste visningsdato. `GET /api/ratings` gir `viewings`. Endringen i punkt 33 er erstattet av dette.
+
 ## Kjente begrensninger og mulige neste steg
 
 - Rundt 30 titler må rettes manuelt med «Rett match» (IMDb-kode eller TMDB-lenke). Det koster ingen OMDb-oppslag.

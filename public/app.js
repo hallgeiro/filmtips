@@ -1289,7 +1289,7 @@ function renderSeen() {
 	let rows = all.filter(
 		(r) =>
 			(seenState.filter === 'rated' ? r.rating : seenState.filter === 'unrated' ? !r.rating : true) &&
-			(!seenState.how || r.how === seenState.how) &&
+			(!seenState.how || r.viewings.some((v) => v.how === seenState.how)) &&
 			(!q || r.title.toLowerCase().includes(q)),
 	);
 	const byTitle = (a, b) => a.title.localeCompare(b.title, 'nb');
@@ -1307,7 +1307,7 @@ function renderSeen() {
 			<div class="w-10 shrink-0 aspect-[2/3] overflow-hidden rounded bg-slate-700">${posterTag(m.poster_path, m.title, 'w92')}</div>
 			<div class="min-w-0 flex-1">
 				<div class="text-sm font-medium leading-tight">${esc(m.title)}</div>
-				<div class="text-xs text-slate-400">${[esc(m.year ?? ''), m.media_type === 'tv' ? 'TV' : '', esc(howLabel(m.how)), m.seen_on ? fmtDay(m.seen_on) : ''].filter(Boolean).join(' · ')}</div>
+				<div class="text-xs text-slate-400">${[esc(m.year ?? ''), m.media_type === 'tv' ? 'TV' : '', esc(howLabel(m.viewings[0]?.how)), m.viewings[0]?.seen_on ? fmtDay(m.viewings[0].seen_on) : '', m.viewings.length > 1 ? `${m.viewings.length} visninger` : ''].filter(Boolean).join(' · ')}</div>
 			</div>
 			<div class="shrink-0 text-sm ${m.rating ? 'font-semibold text-amber-300' : 'text-slate-400'}">${m.rating ? `⭐ ${m.rating}/10` : `${EYE} Sett`}</div>
 		</button>`,
@@ -1556,7 +1556,7 @@ async function initRatings(movie, mt, onMine) {
 	}
 	const mine = data.results.find((r) => r.username === me)?.rating ?? 0;
 	const iSeen = !!mine || data.seen.includes(me);
-	const mySeen = data.seen_details.find((s) => s.username === me);
+	const myViews = data.viewings.filter((v) => v.username === me);
 	if (onMine) onMine(mine);
 	box.innerHTML = `
 		${
@@ -1569,18 +1569,33 @@ async function initRatings(movie, mt, onMine) {
 		}
 		${
 			me && iSeen
-				? `<div class="mb-3 -mt-1 flex flex-wrap items-center gap-2">
-			<select id="seen-how" class="min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm" title="Hvordan så du den?">
-				<option value="">Hvordan så du den?</option>${SEEN_HOW.map(([k, l]) => `<option value="${k}" ${mySeen?.how === k ? 'selected' : ''}>${l}</option>`).join('')}
-			</select>
-			<input id="seen-on" type="date" value="${esc(mySeen?.seen_on ?? '')}" class="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm" title="Dato" />
-			<button id="seen-today" type="button" class="text-xs text-slate-300 underline">I dag</button>
-			<span id="seen-saved" class="text-xs text-emerald-300"></span>
+				? `<div id="viewings" class="mb-3 -mt-1 space-y-2">
+			<div class="text-xs font-semibold text-slate-400">Visninger</div>
+			${myViews
+				.map(
+					(v) => `<div data-view="${v.id}" class="flex flex-wrap items-center gap-2">
+				<select data-view-how class="min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm" title="Hvordan så du den?">
+					<option value="">Hvordan?</option>${SEEN_HOW.map(([k, l]) => `<option value="${k}" ${v.how === k ? 'selected' : ''}>${l}</option>`).join('')}
+				</select>
+				<input data-view-on type="date" value="${esc(v.seen_on ?? '')}" class="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm" title="Dato" />
+				<button type="button" data-view-del class="px-2 py-1 text-red-400" aria-label="Fjern visning">✕</button>
+			</div>`,
+				)
+				.join('')}
+			<div class="flex items-center gap-3">
+				<button id="view-add" type="button" class="text-sm text-amber-300 underline">＋ Legg til visning</button>
+				<span id="seen-saved" class="text-xs"></span>
+			</div>
 		</div>`
 				: ''
 		}
 		<div class="text-slate-300">${data.count ? `<span class="text-amber-300 font-semibold">⭐ ${data.avg}/10</span> snitt · ${data.count} ${data.count === 1 ? 'karakter' : 'karakterer'}` : 'Ingen har gitt karakter ennå.'}</div>
-		${data.seen.length ? `<div class="mt-1 text-xs text-slate-400">Sett av ${data.seen.map((n) => { const d = data.seen_details.find((x) => x.username === n); return esc(n) + (d?.how ? ` (${esc(howLabel(d.how))})` : ''); }).join(', ')}</div>` : ''}
+		${data.seen.length ? `<div class="mt-1 text-xs text-slate-400">Sett av ${data.seen
+			.map((n) => {
+				const hs = [...new Set(data.viewings.filter((v) => v.username === n && v.how).map((v) => howLabel(v.how)))];
+				return esc(n) + (hs.length ? ` (${hs.map(esc).join(', ')})` : '');
+			})
+			.join(', ')}</div>` : ''}
 		${data.count ? `<div class="flex flex-wrap gap-2 mt-2">${data.results.map((r) => `<span class="rounded-full bg-slate-900 px-2 py-1 text-xs text-slate-300">${esc(r.username)} <b class="text-amber-300">${r.rating}</b></span>`).join('')}</div>` : ''}
 		${
 			me
@@ -1630,37 +1645,61 @@ async function initRatings(movie, mt, onMine) {
 		}
 	});
 
-	// Hvordan og når: lagres når du endrer
-	const saveDetails = async () => {
-		const saved = $('#seen-saved');
+	// Visninger: hver med egen måte og dato. Endringer lagres med en gang.
+	const refreshAfter = () => {
+		initRatings(movie, mt, onMine);
+		if (!$('#tab-seen').classList.contains('hidden')) loadSeen();
+	};
+	const saved = (text, ok = true) => {
+		const el = $('#seen-saved');
+		if (!el) return;
+		el.className = `text-xs ${ok ? 'text-emerald-300' : 'text-red-400'}`;
+		el.textContent = text;
+	};
+	$('#viewings')?.addEventListener('change', async (e) => {
+		const row = e.target.closest('[data-view]');
+		if (!row) return;
 		try {
-			await api('/api/seen', {
-				method: 'POST',
-				body: JSON.stringify({
-					tmdb_id: movie.id,
-					media_type: mt,
-					title: movie.title,
-					year: movie.year || null,
-					poster_path: movie.poster_path || null,
-					username: me,
-					seen: true,
-					how: $('#seen-how').value || null,
-					seen_on: $('#seen-on').value || null,
-				}),
+			await api(`/api/viewings/${row.dataset.view}`, {
+				method: 'PATCH',
+				body: JSON.stringify({ how: row.querySelector('[data-view-how]').value || null, seen_on: row.querySelector('[data-view-on]').value || null }),
 			});
-			saved.className = 'text-xs text-emerald-300';
-			saved.textContent = '✓ Lagret';
+			saved('✓ Lagret');
 			if (!$('#tab-seen').classList.contains('hidden')) loadSeen();
 		} catch (err) {
-			saved.className = 'text-xs text-red-400';
-			saved.textContent = err.message;
+			saved(err.message, false);
 		}
-	};
-	$('#seen-how')?.addEventListener('change', saveDetails);
-	$('#seen-on')?.addEventListener('change', saveDetails);
-	$('#seen-today')?.addEventListener('click', () => {
-		$('#seen-on').value = new Date().toLocaleDateString('sv-SE'); // YYYY-MM-DD i lokal tid
-		saveDetails();
+	});
+	$('#viewings')?.addEventListener('click', async (e) => {
+		const del = e.target.closest('[data-view-del]');
+		if (del) {
+			try {
+				await api(`/api/viewings/${del.closest('[data-view]').dataset.view}`, { method: 'DELETE' });
+				refreshAfter();
+			} catch (err) {
+				saved(err.message, false);
+			}
+			return;
+		}
+		if (e.target.closest('#view-add')) {
+			try {
+				await api('/api/viewings', {
+					method: 'POST',
+					body: JSON.stringify({
+						tmdb_id: movie.id,
+						media_type: mt,
+						title: movie.title,
+						year: movie.year || null,
+						poster_path: movie.poster_path || null,
+						username: me,
+						seen_on: new Date().toLocaleDateString('sv-SE'), // i dag, YYYY-MM-DD i lokal tid
+					}),
+				});
+				refreshAfter();
+			} catch (err) {
+				saved(err.message, false);
+			}
+		}
 	});
 }
 
