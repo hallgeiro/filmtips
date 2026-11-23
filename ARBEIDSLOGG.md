@@ -119,7 +119,11 @@ Sammendrag av oppsett, arkitektur og utviklingsarbeid. Filmtips er en ikke-komme
 
 31. Filmvinduet viser «På andres lister»: andre brukeres lister som inneholder filmen (med eier og, i rangerte lister, plassen «nr. N»), med «Åpne →» rett til listen. `GET /api/lists?tmdb_id=&media_type=` gir `item_rank`.
 
-32. Sett og karakterer per bruker: ny fane «🎞 Sett» (velg bruker, filter Alle/Med/Uten karakter, sortering, søk, snitt). Tabell `seen_films` (opprettet i remote D1 før push, eksisterende karakterer kopiert inn). I filmvinduet: avkrysning «👁 Jeg har sett denne» uten karakter og «Sett av …». Å gi karakter (også via anbefaling) markerer alltid som sett. Har du gitt karakter, kan «sett» ikke fjernes uten å fjerne karakteren først. `GET /api/ratings` gir `seen`.
+32. Sett og karakterer per bruker: ny fane «Sett» (velg bruker, filter Alle/Med/Uten karakter, sortering, søk, snitt). Tabell `seen_films` (opprettet i remote D1 før push, eksisterende karakterer kopiert inn). I filmvinduet: avkrysning «Jeg har sett denne» uten karakter og «Sett av …». Å gi karakter (også via anbefaling) markerer alltid som sett. Har du gitt karakter, kan «sett» ikke fjernes uten å fjerne karakteren først. `GET /api/ratings` gir `seen`.
+
+33. Hvordan og når: `seen_films` har kolonnene `how` (kino, streaming, bluray, 4k, dvd, fil, tv, annet) og `seen_on` (dato), lagt til i remote D1 med ALTER før push. I filmvinduet vises «Hvordan så du den?» og dato (med «I dag») når filmen er sett eller har karakter, og lagres ved endring. «Sett av» viser hvordan, og «Sett»-fanen viser hvordan og dato, kan filtreres på hvordan og sorteres etter dato. En film har ett «sett»-innslag per bruker (ikke flere visninger).
+
+34. Sett-ikonet er et enkelt strek-øye (inline SVG, `EYE` i app.js, arver tekstfargen) i stedet for emojien 👁 / 🎞, i fanen, i «Jeg har sett denne» og i «Sett»-merket.
 
 ## Kjente begrensninger og mulige neste steg
 

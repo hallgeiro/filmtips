@@ -38,8 +38,11 @@ CREATE TABLE IF NOT EXISTS seen_films (
   poster_path TEXT,
   username    TEXT    NOT NULL,
   seen_at     TEXT    NOT NULL DEFAULT (datetime('now')),
+  how         TEXT,                                    -- kino, streaming, bluray, 4k, dvd, fil, tv, annet (valgfritt)
+  seen_on     TEXT,                                    -- YYYY-MM-DD, datoen filmen ble sett (valgfritt)
   UNIQUE (tmdb_id, media_type, username)
 );
+-- Eksisterende database: ALTER TABLE seen_films ADD COLUMN how TEXT; ALTER TABLE seen_films ADD COLUMN seen_on TEXT;
 CREATE INDEX IF NOT EXISTS idx_seen_user ON seen_films (username, seen_at DESC);
 
 -- Kommentarer på andres (og egne) anbefalinger

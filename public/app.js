@@ -1,5 +1,8 @@
 const IMG = 'https://image.tmdb.org/t/p/';
 const $ = (s) => document.querySelector(s);
+// Enkelt øye-ikon (strek, arver tekstfargen) i stedet for emoji
+const EYE =
+	'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="inline-block h-4 w-4 align-[-2px]" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
 const esc = (s) =>
 	String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -1247,14 +1250,21 @@ $('#list-q').addEventListener('input', (e) => {
 	}, 350);
 });
 
+/* ---------- Hvordan og når en film ble sett ---------- */
+const SEEN_HOW = [['kino', 'Kino'], ['streaming', 'Streaming'], ['bluray', 'Blu-ray'], ['4k', '4K UHD'], ['dvd', 'DVD'], ['fil', 'Fil / digital kopi'], ['tv', 'TV-sending'], ['annet', 'Annet']];
+const howLabel = (v) => SEEN_HOW.find(([k]) => k === v)?.[1] ?? '';
+const fmtDay = (d) => (d ? new Date(d + 'T12:00:00').toLocaleDateString('nb-NO', { day: 'numeric', month: 'short', year: 'numeric' }) : '');
+
 /* ---------- Sett og karakterer per bruker ---------- */
-const seenState = { user: '', filter: 'all', sort: 'recent', q: '', rows: [] };
+const seenState = { user: '', filter: 'all', how: '', sort: 'recent', q: '', rows: [] };
 
 async function loadSeen() {
 	$('#seen-user').innerHTML = users.map((u) => `<option>${esc(u)}</option>`).join('');
 	if (!users.includes(seenState.user)) seenState.user = users.includes(me) ? me : users[0] || '';
 	$('#seen-user').value = seenState.user;
 	$('#seen-sort').value = seenState.sort;
+	$('#seen-how-filter').innerHTML = '<option value="">Alle visninger</option>' + SEEN_HOW.map(([k, l]) => `<option value="${k}">${l}</option>`).join('');
+	$('#seen-how-filter').value = seenState.how;
 	if (!seenState.user) return;
 	$('#seen-status').textContent = 'Henter…';
 	try {
@@ -1276,7 +1286,12 @@ function renderSeen() {
 	$('#seen-filters').innerHTML = chip('all', `Alle (${all.length})`) + chip('rated', `Med karakter (${rated.length})`) + chip('unrated', `Uten karakter (${unrated})`);
 
 	const q = seenState.q.toLowerCase();
-	let rows = all.filter((r) => (seenState.filter === 'rated' ? r.rating : seenState.filter === 'unrated' ? !r.rating : true) && (!q || r.title.toLowerCase().includes(q)));
+	let rows = all.filter(
+		(r) =>
+			(seenState.filter === 'rated' ? r.rating : seenState.filter === 'unrated' ? !r.rating : true) &&
+			(!seenState.how || r.how === seenState.how) &&
+			(!q || r.title.toLowerCase().includes(q)),
+	);
 	const byTitle = (a, b) => a.title.localeCompare(b.title, 'nb');
 	if (seenState.sort === 'title') rows = [...rows].sort(byTitle);
 	else if (seenState.sort === 'rating') rows = [...rows].sort((a, b) => (b.rating || 0) - (a.rating || 0) || byTitle(a, b));
@@ -1292,9 +1307,9 @@ function renderSeen() {
 			<div class="w-10 shrink-0 aspect-[2/3] overflow-hidden rounded bg-slate-700">${posterTag(m.poster_path, m.title, 'w92')}</div>
 			<div class="min-w-0 flex-1">
 				<div class="text-sm font-medium leading-tight">${esc(m.title)}</div>
-				<div class="text-xs text-slate-400">${esc(m.year ?? '')}${m.media_type === 'tv' ? ' · TV' : ''}</div>
+				<div class="text-xs text-slate-400">${[esc(m.year ?? ''), m.media_type === 'tv' ? 'TV' : '', esc(howLabel(m.how)), m.seen_on ? fmtDay(m.seen_on) : ''].filter(Boolean).join(' · ')}</div>
 			</div>
-			<div class="shrink-0 text-sm ${m.rating ? 'font-semibold text-amber-300' : 'text-slate-400'}">${m.rating ? `⭐ ${m.rating}/10` : '👁 Sett'}</div>
+			<div class="shrink-0 text-sm ${m.rating ? 'font-semibold text-amber-300' : 'text-slate-400'}">${m.rating ? `⭐ ${m.rating}/10` : `${EYE} Sett`}</div>
 		</button>`,
 		)
 		.join('');
@@ -1306,6 +1321,10 @@ $('#seen-user').addEventListener('change', (e) => {
 });
 $('#seen-sort').addEventListener('change', (e) => {
 	seenState.sort = e.target.value;
+	renderSeen();
+});
+$('#seen-how-filter').addEventListener('change', (e) => {
+	seenState.how = e.target.value;
 	renderSeen();
 });
 $('#seen-q').addEventListener('input', (e) => {
@@ -1537,18 +1556,31 @@ async function initRatings(movie, mt, onMine) {
 	}
 	const mine = data.results.find((r) => r.username === me)?.rating ?? 0;
 	const iSeen = !!mine || data.seen.includes(me);
+	const mySeen = data.seen_details.find((s) => s.username === me);
 	if (onMine) onMine(mine);
 	box.innerHTML = `
 		${
 			me
 				? `<label class="mb-3 flex items-center gap-3 text-sm text-slate-200 ${mine ? '' : 'cursor-pointer'}">
 			<input id="seen-cb" type="checkbox" ${iSeen ? 'checked' : ''} ${mine ? 'disabled' : ''} class="h-5 w-5 shrink-0 accent-amber-400" />
-			<span>👁 Jeg har sett denne${mine ? ' <span class="text-xs text-slate-500">(har karakter, regnes som sett)</span>' : ''}</span>
+			<span>${EYE} Jeg har sett denne${mine ? ' <span class="text-xs text-slate-500">(har karakter, regnes som sett)</span>' : ''}</span>
 		</label>`
 				: ''
 		}
+		${
+			me && iSeen
+				? `<div class="mb-3 -mt-1 flex flex-wrap items-center gap-2">
+			<select id="seen-how" class="min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm" title="Hvordan så du den?">
+				<option value="">Hvordan så du den?</option>${SEEN_HOW.map(([k, l]) => `<option value="${k}" ${mySeen?.how === k ? 'selected' : ''}>${l}</option>`).join('')}
+			</select>
+			<input id="seen-on" type="date" value="${esc(mySeen?.seen_on ?? '')}" class="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm" title="Dato" />
+			<button id="seen-today" type="button" class="text-xs text-slate-300 underline">I dag</button>
+			<span id="seen-saved" class="text-xs text-emerald-300"></span>
+		</div>`
+				: ''
+		}
 		<div class="text-slate-300">${data.count ? `<span class="text-amber-300 font-semibold">⭐ ${data.avg}/10</span> snitt · ${data.count} ${data.count === 1 ? 'karakter' : 'karakterer'}` : 'Ingen har gitt karakter ennå.'}</div>
-		${data.seen.length ? `<div class="mt-1 text-xs text-slate-400">Sett av ${data.seen.map(esc).join(', ')}</div>` : ''}
+		${data.seen.length ? `<div class="mt-1 text-xs text-slate-400">Sett av ${data.seen.map((n) => { const d = data.seen_details.find((x) => x.username === n); return esc(n) + (d?.how ? ` (${esc(howLabel(d.how))})` : ''); }).join(', ')}</div>` : ''}
 		${data.count ? `<div class="flex flex-wrap gap-2 mt-2">${data.results.map((r) => `<span class="rounded-full bg-slate-900 px-2 py-1 text-xs text-slate-300">${esc(r.username)} <b class="text-amber-300">${r.rating}</b></span>`).join('')}</div>` : ''}
 		${
 			me
@@ -1596,6 +1628,39 @@ async function initRatings(movie, mt, onMine) {
 			m.textContent = err.message;
 			m.classList.remove('hidden');
 		}
+	});
+
+	// Hvordan og når: lagres når du endrer
+	const saveDetails = async () => {
+		const saved = $('#seen-saved');
+		try {
+			await api('/api/seen', {
+				method: 'POST',
+				body: JSON.stringify({
+					tmdb_id: movie.id,
+					media_type: mt,
+					title: movie.title,
+					year: movie.year || null,
+					poster_path: movie.poster_path || null,
+					username: me,
+					seen: true,
+					how: $('#seen-how').value || null,
+					seen_on: $('#seen-on').value || null,
+				}),
+			});
+			saved.className = 'text-xs text-emerald-300';
+			saved.textContent = '✓ Lagret';
+			if (!$('#tab-seen').classList.contains('hidden')) loadSeen();
+		} catch (err) {
+			saved.className = 'text-xs text-red-400';
+			saved.textContent = err.message;
+		}
+	};
+	$('#seen-how')?.addEventListener('change', saveDetails);
+	$('#seen-on')?.addEventListener('change', saveDetails);
+	$('#seen-today')?.addEventListener('click', () => {
+		$('#seen-on').value = new Date().toLocaleDateString('sv-SE'); // YYYY-MM-DD i lokal tid
+		saveDetails();
 	});
 }
 
