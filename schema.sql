@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS library (
   poster_path TEXT,
   barcode     TEXT,                        -- EAN/UPC fra skanning (valgfri)
   media_type  TEXT    NOT NULL DEFAULT 'movie',   -- 'movie' eller 'tv' (TMDB-id er bare unik innen hver type)
+  collection  INTEGER NOT NULL DEFAULT 0,          -- 1 = bokssett/samling, ikke én film
   director_sort TEXT,                      -- første regissør som 'Etternavn, Fornavn' (for sortering)
   match       TEXT    NOT NULL DEFAULT 'none' CHECK (match IN ('exact', 'fuzzy', 'none')),
   UNIQUE (title, year)
@@ -48,4 +49,4 @@ CREATE TABLE IF NOT EXISTS library (
 CREATE INDEX IF NOT EXISTS idx_library_tmdb ON library (tmdb_id);
 CREATE INDEX IF NOT EXISTS idx_library_title ON library (title COLLATE NOCASE);
 CREATE INDEX IF NOT EXISTS idx_library_barcode ON library (barcode);
--- Eksisterende database uten kolonnene: ALTER TABLE library ADD COLUMN barcode TEXT; ALTER TABLE library ADD COLUMN director_sort TEXT; ALTER TABLE library ADD COLUMN media_type TEXT NOT NULL DEFAULT 'movie';
+-- Eksisterende database uten kolonnene: ALTER TABLE library ADD COLUMN barcode TEXT; ALTER TABLE library ADD COLUMN director_sort TEXT; ALTER TABLE library ADD COLUMN media_type TEXT NOT NULL DEFAULT 'movie'; ALTER TABLE library ADD COLUMN collection INTEGER NOT NULL DEFAULT 0;

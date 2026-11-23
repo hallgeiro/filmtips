@@ -529,13 +529,13 @@ app.get('/api/library', async (c) => {
 	if (tmdbId) (where.push('tmdb_id = ?'), args.push(tmdbId))
 	const mediaType = c.req.query('media_type')
 	if (mediaType === 'movie' || mediaType === 'tv') (where.push('media_type = ?'), args.push(mediaType))
-	if (unmatched) where.push('tmdb_id IS NULL')
-	if (c.req.query('review') === '1') where.push("(tmdb_id IS NULL OR match = 'fuzzy')")
+	if (unmatched) where.push('tmdb_id IS NULL AND collection = 0')
+	if (c.req.query('review') === '1') where.push("((tmdb_id IS NULL AND collection = 0) OR match = 'fuzzy')")
 	const w = where.length ? 'WHERE ' + where.join(' AND ') : ''
 
 	const [rows, count] = await Promise.all([
 		c.env.DB.prepare(
-			`SELECT id, title, year, director, formats, tmdb_id, tmdb_title, poster_path, media_type, match FROM library ${w} ORDER BY ${orderBy} LIMIT ? OFFSET ?`,
+			`SELECT id, title, year, director, formats, tmdb_id, tmdb_title, poster_path, media_type, collection, match FROM library ${w} ORDER BY ${orderBy} LIMIT ? OFFSET ?`,
 		)
 			.bind(...args, limit, offset)
 			.all(),
@@ -641,26 +641,123 @@ app.patch('/api/admin/library/:id', async (c) => {
 	return res.meta.changes ? c.json({ ok: true }) : c.json({ error: 'Fant ikke filmen i biblioteket' }, 404)
 })
 
-// Admin: prøv å matche på nytt de som mangler treff (4 om gangen). Klienten sender last_id videre til alle er gått gjennom.
+// Bokssett og samlinger kan ikke matches mot én film
+const COLLECTION_RE =
+	/\b(collection|trilogy|box ?set|collector'?s set|complete [\w\- ]*(?:series|collection|films|shorts|set)|\d+[- ]film|\d+ films|eighteen films)\b/i
+const isCollection = (t: string) => COLLECTION_RE.test(t)
+
+// Regissørnavn fra CLZ ('A | B') mot TMDB-stab: fullt navn, eller samme etternavn + samme forbokstav
+function directorsMatch(clz: string | null | undefined, crew: string[]): boolean {
+	const a = (clz ?? '').split('|').map((x) => norm(x.replace(/\(.*?\)/g, ''))).filter(Boolean)
+	const b = crew.map(norm).filter(Boolean)
+	return a.some((x) =>
+		b.some((y) => {
+			if (x === y || [...x.split(' ')].sort().join(' ') === [...y.split(' ')].sort().join(' ')) return true
+			const xs = x.split(' ')
+			const ys = y.split(' ')
+			return xs.length > 1 && ys.length > 1 && xs[xs.length - 1] === ys[ys.length - 1] && xs[0][0] === ys[0][0] && xs[xs.length - 1].length > 3
+		}),
+	)
+}
+
+// Søkevarianter: «2»→«II», «Dr.»→«Dr», del før « / »
+function searchQueries(title: string): string[] {
+	const { variants } = titleVariants(title)
+	const base = variants[0].split(/\s+\/\s+/)[0].trim()
+	const roman = ['', '', 'II', 'III', 'IV', 'V', 'VI']
+	const out = [base, base.replace(/\s(\d)$/, (_m, d) => (roman[Number(d)] ? ` ${roman[Number(d)]}` : ` ${d}`)), base.replace(/\./g, '')]
+	return [...new Set(out.map((x) => x.trim()).filter((x) => x.length >= 2))].slice(0, 3)
+}
+
+// Kontrollert match: kandidater fra TMDB (inkl. alternative titler) godtas bare hvis år (±2) og regissør stemmer
+async function verifiedMatch(c: Ctx, title: string, year: number, director: string | null, currentId: number | null): Promise<Match | null> {
+	if (!director || !year) return null
+	const ids: number[] = currentId ? [currentId] : []
+	for (const q of searchQueries(title)) {
+		const list = (await tmdb(c, '/search/movie', { query: q, language: 'en-US', include_adult: 'false' })).results ?? []
+		for (const r of list.slice(0, 5)) {
+			const y = Number((r.release_date ?? '').slice(0, 4)) || 0
+			if (y && Math.abs(y - year) <= 2 && !ids.includes(r.id)) ids.push(r.id)
+		}
+		if (ids.length >= 3) break
+	}
+	for (const id of ids.slice(0, 3)) {
+		const m = await tmdb(c, `/movie/${id}`, { language: 'en-US', append_to_response: 'credits' })
+		const y = Number((m.release_date ?? '').slice(0, 4)) || 0
+		const crew = ((m.credits?.crew ?? []) as any[]).filter((p) => p.job === 'Director').map((p) => p.name as string)
+		if (y && Math.abs(y - year) <= 2 && directorsMatch(director, crew))
+			return { tmdb_id: id, tmdb_title: m.title ?? null, poster_path: m.poster_path ?? null, media_type: 'movie', match: 'exact' }
+	}
+	return null
+}
+
+// Siste reserve: Wikidata (titler på mange språk) → IMDb-kode → TMDB. Merkes «fuzzy».
+async function wikidataMatch(c: Ctx, title: string, year: number): Promise<Match | null> {
+	const headers = { 'user-agent': 'filmtips/1.0 (https://filmtips.hallgeirolsen.com)', accept: 'application/json' }
+	const q = searchQueries(title)[0]
+	const s1 = await fetch(
+		`https://www.wikidata.org/w/api.php?action=wbsearchentities&format=json&type=item&limit=5&language=en&search=${encodeURIComponent(q)}`,
+		{ headers, cf: { cacheTtl: 2592000, cacheEverything: true } },
+	)
+	if (!s1.ok) return null
+	const ids = ((await s1.json<any>()).search ?? []).map((x: any) => x.id).filter(Boolean)
+	if (!ids.length) return null
+	const s2 = await fetch(`https://www.wikidata.org/w/api.php?action=wbgetentities&format=json&props=claims&ids=${ids.join('|')}`, {
+		headers,
+		cf: { cacheTtl: 2592000, cacheEverything: true },
+	})
+	if (!s2.ok) return null
+	const ents = (await s2.json<any>()).entities ?? {}
+	for (const id of ids) {
+		const imdb = ents[id]?.claims?.P345?.[0]?.mainsnak?.datavalue?.value
+		if (typeof imdb !== 'string' || !/^tt\d{6,10}$/.test(imdb)) continue
+		const f = await tmdb(c, `/find/${imdb}`, { external_source: 'imdb_id', language: 'en-US' })
+		const mv = (f.movie_results ?? []).find((r: any) => !year || Math.abs((Number((r.release_date ?? '').slice(0, 4)) || 0) - year) <= 2)
+		if (mv) return { tmdb_id: mv.id, tmdb_title: mv.title ?? null, poster_path: mv.poster_path ?? null, media_type: 'movie', match: 'fuzzy' }
+	}
+	return null
+}
+
+type RematchRow = { id: number; title: string; year: number; director: string | null; tmdb_id: number | null; match: string }
+
+// Admin: kryssjekk titler uten treff og usikre treff (3 om gangen pga. grensen på 50 oppslag). Klienten sender last_id videre til alle er gått gjennom.
 app.post('/api/admin/library/rematch', async (c) => {
 	if (!(await isAdmin(c))) return c.json({ error: 'Krever admin' }, 403)
 	const body = await c.req.json<{ after_id?: number }>().catch(() => ({} as { after_id?: number }))
 	const after = Math.trunc(Number(body.after_id)) || 0
-	const { results: rows } = await c.env.DB.prepare(`SELECT id, title, year FROM library WHERE tmdb_id IS NULL AND id > ? ORDER BY id LIMIT 4`)
+	const where = `id > ? AND collection = 0 AND (tmdb_id IS NULL OR (match = 'fuzzy' AND media_type = 'movie'))`
+	const { results: rows } = await c.env.DB.prepare(`SELECT id, title, year, director, tmdb_id, match FROM library WHERE ${where} ORDER BY id LIMIT 3`)
 		.bind(after)
-		.all<{ id: number; title: string; year: number }>()
-	const matches = await Promise.all(rows.map((r) => matchTitle(c, r.title, r.year, true)))
+		.all<RematchRow>()
+
+	const out = await Promise.all(
+		rows.map(async (r): Promise<{ kind: 'collection' | 'upgraded' | 'found' | 'same'; m?: Match }> => {
+			if (!r.tmdb_id && isCollection(r.title)) return { kind: 'collection' }
+			try {
+				const v = await verifiedMatch(c, r.title, r.year, r.director, r.tmdb_id)
+				if (v) return { kind: r.tmdb_id ? 'upgraded' : 'found', m: v }
+				if (r.tmdb_id) return { kind: 'same' }
+				const base = await matchTitle(c, r.title, r.year, true)
+				if (base.match !== 'none') return { kind: 'found', m: base }
+				const w = await wikidataMatch(c, r.title, r.year)
+				return w ? { kind: 'found', m: w } : { kind: 'same' }
+			} catch {
+				return { kind: 'same' }
+			}
+		}),
+	)
 
 	const stmts = rows.flatMap((r, k) => {
-		const m = matches[k]
-		if (m.match === 'none') return []
+		const o = out[k]
+		if (o.kind === 'collection') return [c.env.DB.prepare(`UPDATE library SET collection = 1 WHERE id = ?`).bind(r.id)]
+		if (!o.m) return []
 		return [
 			c.env.DB.prepare(`UPDATE library SET tmdb_id = ?, tmdb_title = ?, poster_path = ?, media_type = ?, match = ? WHERE id = ?`).bind(
-				m.tmdb_id,
-				m.tmdb_title,
-				m.poster_path,
-				m.media_type,
-				m.match,
+				o.m.tmdb_id,
+				o.m.tmdb_title,
+				o.m.poster_path,
+				o.m.media_type,
+				o.m.match,
 				r.id,
 			),
 		]
@@ -668,13 +765,15 @@ app.post('/api/admin/library/rematch', async (c) => {
 	if (stmts.length) await c.env.DB.batch(stmts)
 
 	const lastId = rows.length ? rows[rows.length - 1].id : after
-	const left = await c.env.DB.prepare(`SELECT COUNT(*) AS n FROM library WHERE tmdb_id IS NULL AND id > ?`).bind(lastId).first<{ n: number }>()
+	const left = await c.env.DB.prepare(`SELECT COUNT(*) AS n FROM library WHERE ${where}`).bind(lastId).first<{ n: number }>()
+	const found = out.filter((o) => o.m && o.kind !== 'upgraded')
 	return c.json({
 		processed: rows.length,
-		exact: matches.filter((m) => m.match === 'exact').length,
-		fuzzy: matches.filter((m) => m.match === 'fuzzy').length,
-		tv: matches.filter((m) => m.match !== 'none' && m.media_type === 'tv').length,
-		none: matches.filter((m) => m.match === 'none').length,
+		exact: out.filter((o) => o.m?.match === 'exact').length,
+		fuzzy: found.filter((o) => o.m?.match === 'fuzzy').length,
+		tv: found.filter((o) => o.m?.media_type === 'tv').length,
+		collection: out.filter((o) => o.kind === 'collection').length,
+		none: out.filter((o) => o.kind === 'same').length,
 		last_id: lastId,
 		remaining: left?.n ?? 0,
 	})

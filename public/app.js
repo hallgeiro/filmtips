@@ -257,7 +257,7 @@ async function loadLibrary(reset) {
 					<div class="text-sm font-medium leading-tight">${esc(m.title)}</div>
 					<div class="text-xs text-slate-400">${m.year || ''}${m.media_type === 'tv' ? ' · TV' : ''} · ${esc(m.formats.split('|').join(' · '))}</div>
 					${m.director ? `<span data-dir="${esc(firstDirector(m.director))}" class="inline-block text-xs text-slate-400 hover:text-amber-300 hover:underline">${esc(firstDirector(m.director))}</span>` : ''}
-					${m.match === 'fuzzy' ? '<div class="text-xs text-amber-400">usikker match</div>' : ''}${m.tmdb_id ? '' : '<div class="text-xs text-slate-500">ikke funnet i TMDB</div>'}
+					${m.match === 'fuzzy' ? '<div class="text-xs text-amber-400">usikker match</div>' : ''}${m.tmdb_id ? '' : m.collection ? '<div class="text-xs text-sky-400">Samling</div>' : '<div class="text-xs text-slate-500">ikke funnet i TMDB</div>'}
 				</div>
 			</button>
 			${isAdmin ? `<button data-fix='${esc(JSON.stringify({ id: m.id, title: m.title, year: m.year }))}' class="fix-btn absolute top-2 right-2 rounded bg-slate-900/90 text-xs px-2 py-1 hover:bg-amber-400 hover:text-slate-900">Rett</button>` : ''}
@@ -596,9 +596,9 @@ $('#fix-modal').addEventListener('click', (e) => e.target.id === 'fix-modal' && 
 
 /* ---------- Match på nytt (admin) ---------- */
 $('#rematch').addEventListener('click', async () => {
-	if (!confirm('Prøve å matche alle filmer uten treff på nytt, også mot TV-serier? Det tar noen minutter. Ikke lukk siden underveis.')) return;
+	if (!confirm('Kryssjekke titler uten treff og usikre treff (regissør, alternative titler, OMDb og Wikidata)? Det tar flere minutter. Ikke lukk siden underveis.')) return;
 	const status = $('#import-status');
-	const tot = { exact: 0, fuzzy: 0, tv: 0, none: 0 };
+	const tot = { exact: 0, fuzzy: 0, tv: 0, collection: 0, none: 0 };
 	let after = 0;
 	let done = 0;
 	try {
@@ -617,7 +617,7 @@ $('#rematch').addEventListener('click', async () => {
 			if (!r.remaining) break;
 		}
 		status.textContent = '';
-		alert(`Ferdig: ${done} sjekket.\nNye treff: ${tot.exact + tot.fuzzy} (TV-serier: ${tot.tv}, usikre: ${tot.fuzzy})\nFortsatt uten treff: ${tot.none}`);
+		alert(`Ferdig: ${done} sjekket.\nBekreftet eller nye treff: ${tot.exact}\nNye usikre treff: ${tot.fuzzy}\nMerket som samling: ${tot.collection}\nUendret: ${tot.none}`);
 		if (!$('#tab-library').classList.contains('hidden')) loadLibrary(true);
 	} catch (err) {
 		status.textContent = '';
