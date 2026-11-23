@@ -70,6 +70,7 @@ $('#admin').addEventListener('click', async () => {
 		}
 		await refreshConfig();
 		if (!$('#tab-feed').classList.contains('hidden')) loadFeed();
+		if (!$('#tab-library').classList.contains('hidden')) loadLibrary(true);
 	} catch (err) {
 		alert(err.message);
 	}
@@ -172,7 +173,8 @@ async function start() {
 
 /* ---------- Bibliotek (CLZ) ---------- */
 const FORMAT_FILTERS = ['4K UHD', 'Blu-ray', 'DVD', 'Digital'];
-const lib = { q: '', format: '', offset: 0, total: 0, timer: null };
+const lib = { q: '', format: '', review: false, sort: 'title', decade: 0, director: '', facets: null, lastKey: null, offset: 0, total: 0, timer: null };
+const firstDirector = (d) => String(d ?? '').split('|')[0].trim();
 
 function libBadge(formats) {
 	const list = [...new Set(String(formats ?? '').split('|').map((f) => f.trim()).filter(Boolean))];
@@ -181,25 +183,63 @@ function libBadge(formats) {
 }
 
 function renderFormatChips() {
-	$('#lib-formats').innerHTML = ['', ...FORMAT_FILTERS]
-		.map(
-			(f) =>
-				`<button data-f="${esc(f)}" class="rounded-full px-3 py-1 text-xs ${lib.format === f ? 'bg-amber-400 text-slate-900' : 'bg-slate-800 text-slate-300'}">${f || 'Alle'}</button>`,
-		)
-		.join('');
+	const chip = (f, label, on) =>
+		`<button data-f="${esc(f)}" class="rounded-full px-3 py-1 text-xs ${on ? 'bg-amber-400 text-slate-900' : 'bg-slate-800 text-slate-300'}">${label}</button>`;
+	$('#lib-formats').innerHTML =
+		['', ...FORMAT_FILTERS].map((f) => chip(f, f || 'Alle', !lib.review && lib.format === f)).join('') +
+		(isAdmin ? chip('__review', '⚠ Å sjekke', lib.review) : '');
+}
+
+function renderDecades() {
+	const chip = (d, label) =>
+		`<button data-d="${d}" class="rounded-full px-3 py-1 text-xs ${lib.decade === d ? 'bg-amber-400 text-slate-900' : 'bg-slate-800 text-slate-300'}">${label}</button>`;
+	$('#lib-decades').innerHTML = lib.facets
+		? chip(0, 'Alle tiår') + lib.facets.map((f) => chip(f.decade, `${f.decade}-tallet`)).join('')
+		: '';
+}
+
+function renderDirChip() {
+	$('#lib-dir').innerHTML = lib.director
+		? `<button id="lib-dir-clear" class="rounded-full bg-amber-400 text-slate-900 text-xs px-3 py-1">Regissør: ${esc(lib.director)} ✕</button>`
+		: '';
+}
+
+function groupHeading(m) {
+	let key = null;
+	if (lib.sort === 'year_desc' || lib.sort === 'year_asc') key = m.year ? String(m.year) : 'Ukjent år';
+	else if (lib.sort === 'director') key = firstDirector(m.director) || 'Ukjent regissør';
+	if (key === null || key === lib.lastKey) return '';
+	lib.lastKey = key;
+	return `<h3 class="col-span-full text-sm font-semibold text-amber-300 mt-3 first:mt-0">${esc(key)}</h3>`;
 }
 
 async function loadLibrary(reset) {
+	$('#lib-add').classList.toggle('hidden', !isAdmin);
 	if (reset) {
 		lib.offset = 0;
+		lib.lastKey = null;
 		$('#lib-list').innerHTML = '';
 		renderFormatChips();
+		renderDirChip();
+		if (!lib.facets) {
+			api('/api/library/facets')
+				.then(({ decades }) => {
+					lib.facets = decades;
+					renderDecades();
+				})
+				.catch(() => {});
+		}
+		renderDecades();
 	}
 	$('#lib-status').textContent = 'Henter…';
 	try {
 		const params = new URLSearchParams({ limit: '60', offset: String(lib.offset) });
 		if (lib.q) params.set('q', lib.q);
 		if (lib.format) params.set('format', lib.format);
+		if (lib.review && isAdmin) params.set('review', '1');
+		if (lib.sort !== 'title') params.set('sort', lib.sort);
+		if (lib.decade) params.set('decade', String(lib.decade));
+		if (lib.director) params.set('director', lib.director);
 		const { results, total } = await api('/api/library?' + params);
 		lib.total = total;
 		lib.offset += results.length;
@@ -208,16 +248,20 @@ async function loadLibrary(reset) {
 			'beforeend',
 			results
 				.map(
-					(m) => `
+					(m) => groupHeading(m) + `
+			<div class="relative">
 			<button ${m.tmdb_id ? `data-movie='${esc(JSON.stringify({ id: m.tmdb_id, title: m.title, year: m.year || null, poster_path: m.poster_path }))}'` : 'disabled'}
-				class="lib-item text-left bg-slate-800 rounded-xl overflow-hidden ${m.tmdb_id ? 'hover:ring-2 hover:ring-amber-400' : 'opacity-70'}">
+				class="lib-item w-full text-left bg-slate-800 rounded-xl overflow-hidden ${m.tmdb_id ? 'hover:ring-2 hover:ring-amber-400' : 'opacity-70'}">
 				<div class="aspect-[2/3] bg-slate-700">${posterTag(m.poster_path, m.title)}</div>
 				<div class="p-2">
 					<div class="text-sm font-medium leading-tight">${esc(m.title)}</div>
 					<div class="text-xs text-slate-400">${m.year || ''} · ${esc(m.formats.split('|').join(' · '))}</div>
+					${m.director ? `<span data-dir="${esc(firstDirector(m.director))}" class="inline-block text-xs text-slate-400 hover:text-amber-300 hover:underline">${esc(firstDirector(m.director))}</span>` : ''}
 					${m.match === 'fuzzy' ? '<div class="text-xs text-amber-400">usikker match</div>' : ''}${m.tmdb_id ? '' : '<div class="text-xs text-slate-500">ikke funnet i TMDB</div>'}
 				</div>
-			</button>`,
+			</button>
+			${isAdmin ? `<button data-fix='${esc(JSON.stringify({ id: m.id, title: m.title, year: m.year }))}' class="fix-btn absolute top-2 right-2 rounded bg-slate-900/90 text-xs px-2 py-1 hover:bg-amber-400 hover:text-slate-900">Rett</button>` : ''}
+			</div>`,
 				)
 				.join(''),
 		);
@@ -237,14 +281,312 @@ $('#lib-q').addEventListener('input', (e) => {
 $('#lib-formats').addEventListener('click', (e) => {
 	const b = e.target.closest('button');
 	if (!b) return;
-	lib.format = b.dataset.f;
+	lib.review = b.dataset.f === '__review';
+	lib.format = lib.review ? '' : b.dataset.f;
 	loadLibrary(true);
 });
 $('#lib-more').addEventListener('click', () => loadLibrary(false));
+$('#lib-sort').addEventListener('change', (e) => {
+	lib.sort = e.target.value;
+	loadLibrary(true);
+});
+$('#lib-decades').addEventListener('click', (e) => {
+	const b = e.target.closest('button');
+	if (!b) return;
+	lib.decade = Number(b.dataset.d);
+	loadLibrary(true);
+});
+$('#lib-dir').addEventListener('click', (e) => {
+	if (!e.target.closest('#lib-dir-clear')) return;
+	lib.director = '';
+	loadLibrary(true);
+});
 $('#lib-list').addEventListener('click', (e) => {
+	const fix = e.target.closest('.fix-btn');
+	if (fix) return openFix(JSON.parse(fix.dataset.fix));
+	const dir = e.target.closest('[data-dir]');
+	if (dir) {
+		lib.director = dir.dataset.dir;
+		loadLibrary(true);
+		return;
+	}
 	const b = e.target.closest('.lib-item[data-movie]');
 	if (b) openMovie(JSON.parse(b.dataset.movie));
 });
+
+/* ---------- Legg til film med strekkode (admin) ---------- */
+let scanner = null;
+let addSel = null;
+let addFormats = new Set();
+let addTimer;
+
+function loadScript(src) {
+	return new Promise((resolve, reject) => {
+		const el = document.createElement('script');
+		el.src = src;
+		el.onload = resolve;
+		el.onerror = () => reject(new Error('Kunne ikke laste skanneren. Skriv inn strekkoden manuelt.'));
+		document.head.appendChild(el);
+	});
+}
+
+function addError(msg) {
+	$('#add-error').textContent = msg || '';
+	$('#add-error').classList.toggle('hidden', !msg);
+}
+
+async function stopScan() {
+	if (scanner) {
+		try {
+			await scanner.stop();
+			scanner.clear();
+		} catch {}
+		scanner = null;
+	}
+	$('#scan-box').classList.add('hidden');
+}
+
+async function startScan() {
+	addError('');
+	try {
+		if (!window.Html5Qrcode) await loadScript('https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js');
+		$('#scan-box').classList.remove('hidden');
+		const F = window.Html5QrcodeSupportedFormats;
+		scanner = new window.Html5Qrcode('scan-reader', { formatsToSupport: [F.EAN_13, F.EAN_8, F.UPC_A, F.UPC_E], verbose: false });
+		await scanner.start(
+			{ facingMode: 'environment' },
+			{ fps: 10, qrbox: { width: 280, height: 120 } },
+			(text) => {
+				if (!/^\d{8,14}$/.test(text)) return;
+				stopScan();
+				$('#add-code').value = text;
+				lookupBarcode(text);
+			},
+			() => {},
+		);
+	} catch (err) {
+		await stopScan();
+		addError(err.message?.includes('Permission') ? 'Kameratilgang ble avslått. Skriv inn strekkoden manuelt.' : 'Kunne ikke starte kameraet: ' + (err.message || err));
+	}
+}
+
+function resetAddPick() {
+	addSel = null;
+	addFormats = new Set();
+	$('#add-pick').classList.add('hidden');
+}
+
+function renderAddResults(results) {
+	$('#add-results').innerHTML = results
+		.map(
+			(m) => `
+		<button data-add='${esc(JSON.stringify({ id: m.id, title: m.title, year: m.year, poster_path: m.poster_path }))}'
+			class="add-pick w-full flex gap-3 text-left bg-slate-900 rounded-lg p-2 hover:ring-2 hover:ring-amber-400">
+			<div class="w-12 shrink-0 aspect-[2/3] bg-slate-700 rounded overflow-hidden">${posterTag(m.poster_path, m.title, 'w92')}</div>
+			<div class="min-w-0">
+				<div class="text-sm font-medium">${esc(m.title)} <span class="text-slate-400">${esc(m.year ?? '')}</span></div>
+				${m.original_title && m.original_title !== m.title ? `<div class="text-xs text-slate-500">${esc(m.original_title)}</div>` : ''}
+				<div class="text-xs text-slate-400 line-clamp-2">${esc(m.overview ?? '')}</div>
+			</div>
+		</button>`,
+		)
+		.join('');
+}
+
+function renderAddFormats() {
+	$('#add-formats').innerHTML = FORMAT_FILTERS.map(
+		(f) =>
+			`<button data-fmt="${esc(f)}" class="rounded-full px-3 py-2 text-sm ${addFormats.has(f) ? 'bg-amber-400 text-slate-900 font-semibold' : 'bg-slate-900 border border-slate-700 text-slate-300'}">${f}</button>`,
+	).join('');
+}
+
+async function lookupBarcode(code) {
+	code = String(code).replace(/\D/g, '');
+	addError('');
+	resetAddPick();
+	$('#add-results').innerHTML = '';
+	if (code.length < 8 || code.length > 14) return addError('Strekkoden må være 8–14 siffer.');
+	$('#add-status').textContent = 'Slår opp…';
+	try {
+		const r = await api('/api/admin/barcode/' + code);
+		if (r.own) {
+			$('#add-status').textContent = `Allerede i biblioteket: ${r.own.title}${r.own.year ? ` (${r.own.year})` : ''} – ${r.own.formats.split('|').join(' · ')}. Søk på tittel for å legge til et annet format.`;
+			return;
+		}
+		if (r.product_title) {
+			$('#add-status').textContent = `Strekkoden gir: «${r.product_title}». Velg riktig film:`;
+			$('#add-q').value = r.clean_title || '';
+			renderAddResults(r.results);
+			if (!r.results.length) $('#add-status').textContent += ' (ingen treff i TMDB, prøv å søke selv)';
+		} else {
+			$('#add-status').textContent = r.note || 'Ingen treff. Søk på tittel i stedet.';
+			$('#add-q').focus();
+		}
+	} catch (err) {
+		$('#add-status').textContent = '';
+		addError(err.message);
+	}
+}
+
+async function searchAdd() {
+	const q = $('#add-q').value.trim();
+	if (q.length < 2) return;
+	$('#add-status').textContent = 'Søker…';
+	try {
+		const { results } = await api('/api/search?q=' + encodeURIComponent(q));
+		$('#add-status').textContent = results.length ? 'Velg riktig film:' : 'Ingen treff.';
+		renderAddResults(results);
+	} catch (err) {
+		$('#add-status').textContent = '';
+		addError(err.message);
+	}
+}
+
+function openAdd() {
+	addError('');
+	$('#add-code').value = '';
+	$('#add-q').value = '';
+	$('#add-status').textContent = '';
+	$('#add-results').innerHTML = '';
+	resetAddPick();
+	$('#add-modal').classList.remove('hidden');
+}
+
+async function closeAdd() {
+	await stopScan();
+	$('#add-modal').classList.add('hidden');
+}
+
+$('#lib-add').addEventListener('click', openAdd);
+$('#add-close').addEventListener('click', closeAdd);
+$('#add-modal').addEventListener('click', (e) => e.target.id === 'add-modal' && closeAdd());
+$('#add-scan').addEventListener('click', startScan);
+$('#scan-stop').addEventListener('click', stopScan);
+$('#add-lookup').addEventListener('click', () => lookupBarcode($('#add-code').value));
+$('#add-code').addEventListener('keydown', (e) => e.key === 'Enter' && lookupBarcode($('#add-code').value));
+$('#add-q').addEventListener('input', () => {
+	clearTimeout(addTimer);
+	addTimer = setTimeout(searchAdd, 400);
+});
+$('#add-results').addEventListener('click', (e) => {
+	const b = e.target.closest('.add-pick');
+	if (!b) return;
+	addSel = JSON.parse(b.dataset.add);
+	addFormats = new Set();
+	$('#add-picked').textContent = `${addSel.title}${addSel.year ? ` (${addSel.year})` : ''}`;
+	renderAddFormats();
+	$('#add-pick').classList.remove('hidden');
+	$('#add-pick').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+});
+$('#add-formats').addEventListener('click', (e) => {
+	const b = e.target.closest('button');
+	if (!b) return;
+	addFormats.has(b.dataset.fmt) ? addFormats.delete(b.dataset.fmt) : addFormats.add(b.dataset.fmt);
+	renderAddFormats();
+});
+$('#add-save').addEventListener('click', async () => {
+	if (!addSel) return;
+	if (!addFormats.size) return addError('Velg minst ett format.');
+	addError('');
+	try {
+		const r = await api('/api/admin/library/add', {
+			method: 'POST',
+			body: JSON.stringify({ tmdb_id: addSel.id, formats: [...addFormats], barcode: $('#add-code').value }),
+		});
+		$('#add-status').textContent = `✓ ${r.existed ? 'Oppdatert' : 'Lagt til'}: ${r.title}${r.year ? ` (${r.year})` : ''} – ${r.formats.split('|').join(' · ')}. Klar for neste film.`;
+		$('#add-code').value = '';
+		$('#add-q').value = '';
+		$('#add-results').innerHTML = '';
+		resetAddPick();
+		if (!$('#tab-library').classList.contains('hidden')) loadLibrary(true);
+	} catch (err) {
+		addError(err.message);
+	}
+});
+
+/* ---------- Rett match (admin) ---------- */
+let fixTarget = null;
+let fixTimer;
+
+function closeFix() {
+	$('#fix-modal').classList.add('hidden');
+	fixTarget = null;
+}
+
+function openFix(item) {
+	fixTarget = item;
+	$('#fix-title').textContent = `CLZ: ${item.title}${item.year ? ` (${item.year})` : ''}`;
+	$('#fix-q').value = item.title;
+	$('#fix-id').value = '';
+	$('#fix-error').classList.add('hidden');
+	$('#fix-modal').classList.remove('hidden');
+	searchFix();
+}
+
+async function searchFix() {
+	const q = $('#fix-q').value.trim();
+	if (q.length < 2) {
+		$('#fix-results').innerHTML = '';
+		return;
+	}
+	$('#fix-results').innerHTML = '<p class="text-sm text-slate-400">Søker…</p>';
+	try {
+		const { results } = await api('/api/search?q=' + encodeURIComponent(q));
+		$('#fix-results').innerHTML = results.length
+			? results
+					.map(
+						(m) => `
+			<button data-pick="${m.id}" class="fix-pick w-full flex gap-3 text-left bg-slate-900 rounded-lg p-2 hover:ring-2 hover:ring-amber-400">
+				<div class="w-12 shrink-0 aspect-[2/3] bg-slate-700 rounded overflow-hidden">${posterTag(m.poster_path, m.title, 'w92')}</div>
+				<div class="min-w-0">
+					<div class="text-sm font-medium">${esc(m.title)} <span class="text-slate-400">${esc(m.year ?? '')}</span></div>
+					${m.original_title && m.original_title !== m.title ? `<div class="text-xs text-slate-500">${esc(m.original_title)}</div>` : ''}
+					<div class="text-xs text-slate-400 line-clamp-2">${esc(m.overview)}</div>
+				</div>
+			</button>`,
+					)
+					.join('')
+			: '<p class="text-sm text-slate-400">Ingen treff. Prøv en annen tittel, eller lim inn TMDB-lenken.</p>';
+	} catch (err) {
+		$('#fix-results').innerHTML = `<p class="text-sm text-red-400">${esc(err.message)}</p>`;
+	}
+}
+
+async function applyFix(tmdbId) {
+	if (!fixTarget) return;
+	try {
+		await api(`/api/admin/library/${fixTarget.id}`, { method: 'PATCH', body: JSON.stringify({ tmdb_id: tmdbId }) });
+		closeFix();
+		loadLibrary(true);
+	} catch (err) {
+		$('#fix-error').textContent = err.message;
+		$('#fix-error').classList.remove('hidden');
+	}
+}
+
+$('#fix-q').addEventListener('input', () => {
+	clearTimeout(fixTimer);
+	fixTimer = setTimeout(searchFix, 350);
+});
+$('#fix-results').addEventListener('click', (e) => {
+	const b = e.target.closest('.fix-pick');
+	if (b) applyFix(Number(b.dataset.pick));
+});
+$('#fix-use-id').addEventListener('click', () => {
+	const v = $('#fix-id').value.trim();
+	const id = Number((v.match(/movie\/(\d+)/) || v.match(/^(\d+)$/) || [])[1]);
+	if (!id) {
+		$('#fix-error').textContent = 'Fant ikke en TMDB-id. Lim inn en lenke som themoviedb.org/movie/123 eller bare tallet.';
+		$('#fix-error').classList.remove('hidden');
+		return;
+	}
+	applyFix(id);
+});
+$('#fix-clear').addEventListener('click', () => {
+	if (confirm('Fjerne TMDB-matchen for denne filmen? Den vises da uten plakat.')) applyFix(null);
+});
+$('#fix-cancel').addEventListener('click', closeFix);
+$('#fix-modal').addEventListener('click', (e) => e.target.id === 'fix-modal' && closeFix());
 
 /* ---------- Import fra CLZ (admin) ---------- */
 function parseCSV(text) {

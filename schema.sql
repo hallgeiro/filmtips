@@ -39,8 +39,12 @@ CREATE TABLE IF NOT EXISTS library (
   tmdb_id     INTEGER,                     -- NULL = ikke matchet mot TMDB ennå
   tmdb_title  TEXT,
   poster_path TEXT,
+  barcode     TEXT,                        -- EAN/UPC fra skanning (valgfri)
+  director_sort TEXT,                      -- første regissør som 'Etternavn, Fornavn' (for sortering)
   match       TEXT    NOT NULL DEFAULT 'none' CHECK (match IN ('exact', 'fuzzy', 'none')),
   UNIQUE (title, year)
 );
 CREATE INDEX IF NOT EXISTS idx_library_tmdb ON library (tmdb_id);
 CREATE INDEX IF NOT EXISTS idx_library_title ON library (title COLLATE NOCASE);
+CREATE INDEX IF NOT EXISTS idx_library_barcode ON library (barcode);
+-- Eksisterende database uten kolonnene: ALTER TABLE library ADD COLUMN barcode TEXT; ALTER TABLE library ADD COLUMN director_sort TEXT;

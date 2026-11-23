@@ -338,6 +338,14 @@ app.delete('/api/recommendations/:id', async (c) => {
 const norm = (s: string) =>
 	s.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, ' ').trim()
 
+// Første regissør som 'Etternavn, Fornavn' (siste ord regnes som etternavn)
+function directorSortKey(d: string | null | undefined): string | null {
+	const first = (d ?? '').split('|')[0].trim()
+	if (!first) return null
+	const i = first.lastIndexOf(' ')
+	return i < 0 ? first : `${first.slice(i + 1)}, ${first.slice(0, i).trim()}`
+}
+
 type Match = { tmdb_id: number | null; tmdb_title: string | null; poster_path: string | null; match: 'exact' | 'fuzzy' | 'none' }
 
 // Finn film i TMDB ut fra tittel + år. Maks 2 oppslag per film.
@@ -371,31 +379,52 @@ async function matchMovie(c: Ctx, title: string, year: number): Promise<Match> {
 	}
 }
 
+const LIB_SORTS: Record<string, string> = {
+	title: 'title COLLATE NOCASE',
+	year_desc: '(year = 0), year DESC, title COLLATE NOCASE',
+	year_asc: '(year = 0), year ASC, title COLLATE NOCASE',
+	director: "(director_sort IS NULL OR director_sort = ''), director_sort COLLATE NOCASE, year, title COLLATE NOCASE",
+}
+
 app.get('/api/library', async (c) => {
 	const q = (c.req.query('q') ?? '').trim()
 	const format = (c.req.query('format') ?? '').trim()
+	const director = (c.req.query('director') ?? '').trim()
+	const decade = Math.trunc(Number(c.req.query('decade'))) || 0
 	const tmdbId = Number(c.req.query('tmdb_id')) || 0
 	const unmatched = c.req.query('unmatched') === '1'
+	const orderBy = LIB_SORTS[c.req.query('sort') ?? ''] ?? LIB_SORTS.title
 	const limit = Math.min(Math.max(Number(c.req.query('limit')) || 60, 1), 200)
 	const offset = Math.max(Number(c.req.query('offset')) || 0, 0)
 
 	const where: string[] = []
 	const args: (string | number)[] = []
-	if (q) (where.push('title LIKE ?'), args.push(`%${q}%`))
+	if (q) (where.push('(title LIKE ? OR director LIKE ?)'), args.push(`%${q}%`, `%${q}%`))
 	if (format) (where.push('formats LIKE ?'), args.push(`%${format}%`))
+	if (director) (where.push('director LIKE ?'), args.push(`%${director}%`))
+	if (decade > 0) (where.push('(year >= ? AND year < ?)'), args.push(decade, decade + 10))
 	if (tmdbId) (where.push('tmdb_id = ?'), args.push(tmdbId))
 	if (unmatched) where.push('tmdb_id IS NULL')
+	if (c.req.query('review') === '1') where.push("(tmdb_id IS NULL OR match = 'fuzzy')")
 	const w = where.length ? 'WHERE ' + where.join(' AND ') : ''
 
 	const [rows, count] = await Promise.all([
 		c.env.DB.prepare(
-			`SELECT id, title, year, formats, tmdb_id, tmdb_title, poster_path, match FROM library ${w} ORDER BY title COLLATE NOCASE LIMIT ? OFFSET ?`,
+			`SELECT id, title, year, director, formats, tmdb_id, tmdb_title, poster_path, match FROM library ${w} ORDER BY ${orderBy} LIMIT ? OFFSET ?`,
 		)
 			.bind(...args, limit, offset)
 			.all(),
 		c.env.DB.prepare(`SELECT COUNT(*) AS n FROM library ${w}`).bind(...args).first<{ n: number }>(),
 	])
 	return c.json({ results: rows.results, total: count?.n ?? 0 })
+})
+
+// Tiår som finnes i biblioteket (til filterknapper)
+app.get('/api/library/facets', async (c) => {
+	const { results } = await c.env.DB.prepare(
+		`SELECT (year / 10) * 10 AS decade, COUNT(*) AS n FROM library WHERE year > 0 GROUP BY decade ORDER BY decade`,
+	).all()
+	return c.json({ decades: results })
 })
 
 // Admin: importer en bunke (maks 20) filmer fra CLZ. Kan kjøres på nytt uten å lage duplikater.
@@ -432,16 +461,16 @@ app.post('/api/admin/library/import', async (c) => {
 	const stmts = items.map((i, k) => {
 		const m = matches[k] ?? { tmdb_id: null, tmdb_title: null, poster_path: null, match: 'none' as const }
 		return c.env.DB.prepare(
-			`INSERT INTO library (title, year, formats, genres, runtime, director, distributor, added_date, tmdb_id, tmdb_title, poster_path, match)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			`INSERT INTO library (title, year, formats, genres, runtime, director, director_sort, distributor, added_date, tmdb_id, tmdb_title, poster_path, match)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			 ON CONFLICT (title, year) DO UPDATE SET
 			   formats = excluded.formats, genres = excluded.genres, runtime = excluded.runtime,
-			   director = excluded.director, distributor = excluded.distributor, added_date = excluded.added_date,
+			   director = excluded.director, director_sort = excluded.director_sort, distributor = excluded.distributor, added_date = excluded.added_date,
 			   tmdb_id = COALESCE(library.tmdb_id, excluded.tmdb_id),
 			   tmdb_title = COALESCE(library.tmdb_title, excluded.tmdb_title),
 			   poster_path = COALESCE(library.poster_path, excluded.poster_path),
 			   match = CASE WHEN library.tmdb_id IS NULL THEN excluded.match ELSE library.match END`,
-		).bind(i.title, i.year, i.formats, i.genres, i.runtime, i.director, i.distributor, i.added_date, m.tmdb_id, m.tmdb_title, m.poster_path, m.match)
+		).bind(i.title, i.year, i.formats, i.genres, i.runtime, i.director, directorSortKey(i.director), i.distributor, i.added_date, m.tmdb_id, m.tmdb_title, m.poster_path, m.match)
 	})
 	if (stmts.length) await c.env.DB.batch(stmts)
 
@@ -453,6 +482,131 @@ app.post('/api/admin/library/import', async (c) => {
 		none: count('none'),
 		skipped: matches.filter((m) => m === null).length,
 	})
+})
+
+// Admin: rett (eller fjern) TMDB-match for en film i biblioteket. Tittel og plakat hentes fra TMDB.
+app.patch('/api/admin/library/:id', async (c) => {
+	if (!(await isAdmin(c))) return c.json({ error: 'Krever admin' }, 403)
+	const id = Number(c.req.param('id'))
+	if (!Number.isInteger(id) || id <= 0) return c.json({ error: 'Ugyldig id' }, 400)
+	const body = await c.req.json<{ tmdb_id?: number | null }>().catch(() => ({} as { tmdb_id?: number | null }))
+
+	if (body.tmdb_id === null) {
+		const res = await c.env.DB.prepare(`UPDATE library SET tmdb_id = NULL, tmdb_title = NULL, poster_path = NULL, match = 'none' WHERE id = ?`).bind(id).run()
+		return res.meta.changes ? c.json({ ok: true }) : c.json({ error: 'Fant ikke filmen i biblioteket' }, 404)
+	}
+	const tmdbId = Number(body.tmdb_id)
+	if (!Number.isInteger(tmdbId) || tmdbId <= 0) return c.json({ error: 'Ugyldig TMDB-id' }, 400)
+
+	let m: any
+	try {
+		m = await tmdb(c, `/movie/${tmdbId}`, { language: 'en-US' })
+	} catch {
+		return c.json({ error: 'Fant ikke denne filmen i TMDB' }, 404)
+	}
+	const res = await c.env.DB.prepare(`UPDATE library SET tmdb_id = ?, tmdb_title = ?, poster_path = ?, match = 'exact' WHERE id = ?`)
+		.bind(tmdbId, m.title ?? null, m.poster_path ?? null, id)
+		.run()
+	return res.meta.changes ? c.json({ ok: true }) : c.json({ error: 'Fant ikke filmen i biblioteket' }, 404)
+})
+
+// ---------- Strekkode: legg til enkeltfilmer ----------
+const FORMATS = ['4K UHD', 'Blu-ray', 'DVD', 'Digital']
+
+// Rydd produkttittel fra butikkdatabasen ("Heat (Blu-ray) [1995]" -> "Heat")
+function cleanProductTitle(t: string): string {
+	return t
+		.replace(/[\[(][^\])]*(blu-?ray|dvd|4k|uhd|ultra hd|digital|edition|widescreen|steelbook|region|disc|\b(?:19|20)\d{2}\b)[^\])]*[\])]/gi, ' ')
+		.replace(/\b(blu-?ray|dvd|4k ultra hd|4k uhd|4k|uhd|ultra hd|steelbook|widescreen|collector'?s edition|special edition|combo pack|bluray)\b/gi, ' ')
+		.replace(/\s+[-–|:,+]+\s*$/, '')
+		.replace(/\s{2,}/g, ' ')
+		.trim()
+}
+
+// Admin: slå opp strekkode. Sjekker eget bibliotek først, deretter UPCitemdb (gratis: 100/dag), og foreslår TMDB-treff.
+app.get('/api/admin/barcode/:code', async (c) => {
+	if (!(await isAdmin(c))) return c.json({ error: 'Krever admin' }, 403)
+	const code = c.req.param('code').replace(/\D/g, '')
+	if (code.length < 8 || code.length > 14) return c.json({ error: 'Ugyldig strekkode' }, 400)
+
+	const own = await c.env.DB.prepare(`SELECT id, title, year, formats, tmdb_id, poster_path FROM library WHERE barcode = ?`).bind(code).first()
+	if (own) return c.json({ code, own, product_title: null, results: [] })
+
+	let productTitle: string | null = null
+	let note: string | null = null
+	try {
+		const res = await fetch(`https://api.upcitemdb.com/prod/trial/lookup?upc=${code}`, {
+			headers: { accept: 'application/json' },
+			cf: { cacheTtlByStatus: { '200-299': 2592000, '400-599': 0 } },
+		})
+		if (res.status === 429) note = 'Oppslagstjenesten er opptatt eller dagskvoten (100) er brukt opp. Søk på tittel i stedet.'
+		else if (res.ok) productTitle = ((await res.json<any>())?.items?.[0]?.title as string | undefined) ?? null
+		if (!productTitle && !note) note = 'Strekkoden finnes ikke i oppslagstjenesten. Søk på tittel i stedet.'
+	} catch {
+		note = 'Kunne ikke nå oppslagstjenesten. Søk på tittel i stedet.'
+	}
+
+	let results: any[] = []
+	if (productTitle) {
+		try {
+			const data = await tmdb(c, '/search/movie', { query: cleanProductTitle(productTitle), language: 'nb-NO', include_adult: 'false' })
+			results = (data.results ?? []).slice(0, 8).map((m: any) => ({
+				id: m.id,
+				title: m.title,
+				original_title: m.original_title,
+				year: (m.release_date ?? '').slice(0, 4) || null,
+				poster_path: m.poster_path ?? null,
+				overview: m.overview ?? '',
+			}))
+		} catch {
+			note = 'TMDB-søket feilet.'
+		}
+	}
+	return c.json({ code, own: null, product_title: productTitle, clean_title: productTitle ? cleanProductTitle(productTitle) : null, results, note })
+})
+
+// Admin: legg til én film (valgt i TMDB) i biblioteket med ett eller flere formater
+app.post('/api/admin/library/add', async (c) => {
+	if (!(await isAdmin(c))) return c.json({ error: 'Krever admin' }, 403)
+	const b = await c.req.json<{ tmdb_id?: number; formats?: string[]; barcode?: string }>().catch(() => null)
+	const tmdbId = Number(b?.tmdb_id)
+	const formats = [...new Set((b?.formats ?? []).filter((f) => FORMATS.includes(f)))]
+	const barcode = String(b?.barcode ?? '').replace(/\D/g, '')
+	if (!Number.isInteger(tmdbId) || tmdbId <= 0) return c.json({ error: 'Ugyldig film' }, 400)
+	if (!formats.length) return c.json({ error: 'Velg minst ett format' }, 400)
+
+	let m: any
+	try {
+		m = await tmdb(c, `/movie/${tmdbId}`, { language: 'en-US', append_to_response: 'credits' })
+	} catch {
+		return c.json({ error: 'Fant ikke filmen i TMDB' }, 404)
+	}
+	const title = String(m.title ?? '').slice(0, 200)
+	const year = Number(String(m.release_date ?? '').slice(0, 4)) || 0
+	const director = ((m.credits?.crew ?? []) as any[]).filter((p) => p.job === 'Director').map((p) => p.name).join(' | ') || null
+	const code = barcode.length >= 8 && barcode.length <= 14 ? barcode : null
+
+	const row = await c.env.DB.prepare(`SELECT id, formats FROM library WHERE tmdb_id = ? OR (title = ? AND year = ?) ORDER BY (tmdb_id = ?) DESC LIMIT 1`)
+		.bind(tmdbId, title, year, tmdbId)
+		.first<{ id: number; formats: string }>()
+
+	if (row) {
+		const merged = [...new Set([...row.formats.split('|'), ...formats])].filter(Boolean).sort().join('|')
+		await c.env.DB.prepare(
+			`UPDATE library SET formats = ?, barcode = COALESCE(?, barcode), tmdb_id = ?, tmdb_title = ?, poster_path = COALESCE(?, poster_path), director = COALESCE(NULLIF(director, ''), ?), director_sort = COALESCE(NULLIF(director_sort, ''), ?), match = 'exact' WHERE id = ?`,
+		)
+			.bind(merged, code, tmdbId, title, m.poster_path ?? null, director, directorSortKey(director), row.id)
+			.run()
+		return c.json({ ok: true, title, year, formats: merged, existed: true })
+	}
+	const merged = formats.sort().join('|')
+	await c.env.DB.prepare(
+		`INSERT INTO library (title, year, formats, genres, runtime, director, director_sort, tmdb_id, tmdb_title, poster_path, barcode, match)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'exact')`,
+	)
+		.bind(title, year, merged, (m.genres ?? []).map((g: any) => g.name).join(' | ') || null, Number(m.runtime) || null, director, directorSortKey(director), tmdbId, title, m.poster_path ?? null, code)
+		.run()
+	return c.json({ ok: true, title, year, formats: merged, existed: false })
 })
 
 app.notFound((c) => (c.req.path.startsWith('/api/') ? c.json({ error: 'Ikke funnet' }, 404) : c.env.ASSETS.fetch(c.req.raw)))

@@ -43,6 +43,10 @@ Alle `/api/*`-ruter unntatt `/api/login` krever innloggingscookie.
 | `DELETE /api/recommendations/:id?username=` | slett egen anbefaling (admin kan slette alle) |
 | `POST /api/identity` | `{username, pin}` velger navn. Første gang opprettes PIN-en, deretter må den oppgis |
 | `GET /api/library[?q=&format=&tmdb_id=]` | bibliotek (importert fra CLZ), adskilt fra anbefalinger |
+| `GET /api/library/facets` | tiår som finnes i biblioteket |
+| `GET /api/admin/barcode/:code` | (admin) slå opp strekkode (UPCitemdb, 100/dag) og foreslå TMDB-treff |
+| `POST /api/admin/library/add` | (admin) legg til én film med format(er) og evt. strekkode |
+| `PATCH /api/admin/library/:id` | (admin) rett eller fjern TMDB-match |
 | `POST /api/admin/library/import` | (admin) importerer opptil 20 filmer om gangen, matcher mot TMDB |
 | `POST /api/admin/reset-pin` | `{username}` (admin) fjerner PIN slik at den kan lages på nytt |
 | `POST /api/admin/login` / `logout` | `{password}` mot `ADMIN_PASSWORD` gir admin-cookie |
@@ -54,3 +58,4 @@ Alle `/api/*`-ruter unntatt `/api/login` krever innloggingscookie.
 - Sikkerheten er bevisst enkel (felles passord, tillitsbasert navnevalg), tilpasset familie og venner.
 - TMDB krever attribusjon. Strømdata kommer fra JustWatch. Begge er kreditert i bunnteksten.
 - Bibliotek: som admin trykker du «Importer CLZ-CSV…» og velger eksportfilen fra CLZ Movies (kolonnene Title og Format kreves). Filmer matches mot TMDB på tittel og år, og samme film i flere formater slås sammen. Importen kan kjøres på nytt uten duplikater. Anbefalte filmer som finnes i biblioteket merkes med formatet.
+- Biblioteket kan sorteres på tittel, år (nyest/eldst) og regissør (etter etternavn), filtreres på format og tiår, og søkes på tittel eller regissør. Trykk på et regissørnavn for å se alle filmene hans eller hennes. Som admin kan du rette feilmatcher («Rett») og legge til enkeltfilmer med strekkodeskanning (kamera krever https).
