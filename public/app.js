@@ -5,7 +5,8 @@ const esc = (s) =>
 
 let users = [];
 let isAdmin = false;
-let me = localStorage.getItem('filmtips_user') || '';
+let me = '';
+let identity = null; // navn låst av serveren (null = ikke valgt ennå)
 let searchTimer;
 
 async function api(path, opts = {}) {
@@ -61,41 +62,61 @@ $('#admin').addEventListener('click', async () => {
 	try {
 		if (isAdmin) {
 			await api('/api/admin/logout', { method: 'POST' });
-			isAdmin = false;
 		} else {
 			const password = prompt('Admin-passord:');
 			if (!password) return;
 			await api('/api/admin/login', { method: 'POST', body: JSON.stringify({ password }) });
-			isAdmin = true;
 		}
-		renderAdmin();
+		await refreshConfig();
 		if (!$('#tab-feed').classList.contains('hidden')) loadFeed();
 	} catch (err) {
 		alert(err.message);
 	}
 });
 
+/* ---------- Navn ---------- */
+function renderUser() {
+	$('#user').innerHTML =
+		`<option value="">Velg navn…</option>` + users.map((u) => `<option ${u === me ? 'selected' : ''}>${esc(u)}</option>`).join('');
+	const locked = !!identity && !isAdmin;
+	$('#user').disabled = locked;
+	$('#user').title = locked ? 'Navnet er låst. Be admin om å endre det.' : '';
+}
+
+async function refreshConfig() {
+	({ users, admin: isAdmin, identity } = await api('/api/config'));
+	if (identity && !isAdmin) me = identity;
+	else if (!users.includes(me)) me = identity || '';
+	renderAdmin();
+	renderUser();
+}
+
+$('#user').addEventListener('change', async (e) => {
+	const wanted = e.target.value;
+	if (!wanted) {
+		me = '';
+		return;
+	}
+	try {
+		await api('/api/identity', { method: 'POST', body: JSON.stringify({ username: wanted }) });
+		me = identity = wanted;
+	} catch (err) {
+		alert(err.message);
+		e.target.value = me;
+	}
+});
+
 /* ---------- Oppstart ---------- */
 async function start() {
 	try {
-		({ users, admin: isAdmin } = await api('/api/config'));
+		await refreshConfig();
 	} catch {
 		return; // showLogin() er allerede kalt ved 401
 	}
 	$('#login').classList.add('hidden');
 	$('#app').classList.remove('hidden');
-	renderAdmin();
-
-	if (!users.includes(me)) me = '';
-	$('#user').innerHTML =
-		`<option value="">Velg navn…</option>` + users.map((u) => `<option ${u === me ? 'selected' : ''}>${esc(u)}</option>`).join('');
 	setTab('search');
 }
-
-$('#user').addEventListener('change', (e) => {
-	me = e.target.value;
-	localStorage.setItem('filmtips_user', me);
-});
 
 /* ---------- Faner ---------- */
 function setTab(tab) {

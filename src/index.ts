@@ -15,6 +15,7 @@ const app = new Hono<{ Bindings: Bindings }>()
 
 const COOKIE = 'filmtips_session'
 const ADMIN_COOKIE = 'filmtips_admin'
+const IDENTITY_COOKIE = 'filmtips_user'
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 90 // 90 dager
 const enc = new TextEncoder()
 
@@ -80,7 +81,37 @@ async function isAdmin(c: Ctx): Promise<boolean> {
 	return safeEqual(cookie, await sessionToken(pw, 'filmtips-admin-v1'))
 }
 
-app.get('/api/config', async (c) => c.json({ users: getUsers(c.env), admin: await isAdmin(c) }))
+// Identitet: valgt navn låses i en signert cookie. Bare admin kan endre det etterpå.
+async function getIdentity(c: Ctx): Promise<string | null> {
+	const raw = getCookie(c, IDENTITY_COOKIE)
+	if (!raw) return null
+	const i = raw.lastIndexOf('.')
+	if (i < 1) return null
+	const name = raw.slice(0, i)
+	const sig = raw.slice(i + 1)
+	if (!getUsers(c.env).includes(name)) return null
+	return (await safeEqual(sig, await sessionToken(c.env.APP_PASSWORD, 'filmtips-user-v1:' + name))) ? name : null
+}
+
+app.get('/api/config', async (c) => c.json({ users: getUsers(c.env), admin: await isAdmin(c), identity: await getIdentity(c) }))
+
+app.post('/api/identity', async (c) => {
+	const body = await c.req.json<{ username?: string }>().catch(() => ({} as { username?: string }))
+	const name = String(body.username ?? '').trim()
+	if (!getUsers(c.env).includes(name)) return c.json({ error: 'Ukjent navn' }, 400)
+	const current = await getIdentity(c)
+	if (current && current !== name && !(await isAdmin(c))) {
+		return c.json({ error: `Navnet er låst til ${current}. Be admin om å endre det.` }, 403)
+	}
+	setCookie(c, IDENTITY_COOKIE, `${name}.${await sessionToken(c.env.APP_PASSWORD, 'filmtips-user-v1:' + name)}`, {
+		httpOnly: true,
+		secure: new URL(c.req.url).protocol === 'https:',
+		sameSite: 'Lax',
+		path: '/',
+		maxAge: 60 * 60 * 24 * 365,
+	})
+	return c.json({ ok: true, identity: name })
+})
 
 app.post('/api/admin/login', async (c) => {
 	if (!c.env.ADMIN_PASSWORD) return c.json({ error: 'Serverfeil: secret ADMIN_PASSWORD er ikke satt på denne Workeren' }, 500)
@@ -197,6 +228,12 @@ app.post('/api/recommendations', async (c) => {
 	if (!Number.isInteger(tmdb_id) || tmdb_id <= 0) return c.json({ error: 'Ugyldig film' }, 400)
 	if (!title || title.length > 200) return c.json({ error: 'Ugyldig tittel' }, 400)
 	if (!getUsers(c.env).includes(username)) return c.json({ error: 'Ukjent navn' }, 400)
+	// Uten admin kan man bare anbefale som seg selv
+	if (!(await isAdmin(c))) {
+		const me = await getIdentity(c)
+		if (!me) return c.json({ error: 'Velg navnet ditt først' }, 403)
+		if (username !== me) return c.json({ error: `Du kan bare anbefale som ${me}` }, 403)
+	}
 	if (!Number.isInteger(rating) || rating < 1 || rating > 6) return c.json({ error: 'Terningkast må være 1–6' }, 400)
 	if (comment.length > 1000) return c.json({ error: 'Kommentaren er for lang (maks 1000 tegn)' }, 400)
 
@@ -224,8 +261,8 @@ app.delete('/api/recommendations/:id', async (c) => {
 		const res = await c.env.DB.prepare(`DELETE FROM recommendations WHERE id = ?`).bind(id).run()
 		return c.json({ ok: true, deleted: res.meta.changes })
 	}
-	const username = (c.req.query('username') ?? '').trim()
-	if (!username) return c.json({ error: 'Ugyldig forespørsel' }, 400)
+	const username = await getIdentity(c)
+	if (!username) return c.json({ error: 'Velg navnet ditt først' }, 403)
 	const res = await c.env.DB.prepare(`DELETE FROM recommendations WHERE id = ? AND username = ?`).bind(id, username).run()
 	return c.json({ ok: true, deleted: res.meta.changes })
 })
