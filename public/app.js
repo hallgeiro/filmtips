@@ -1333,51 +1333,66 @@ async function initModalLists(movie, mt, message = '') {
 		box.textContent = err.message;
 		return;
 	}
-	const firstFree = mine.find((l) => !l.has_item);
+	const free = mine.filter((l) => !l.has_item);
 	box.innerHTML = `
-		<div class="flex gap-2">
+		${
+			mine.length
+				? `<div class="flex gap-2">
 			<select id="ml-select" class="flex-1 min-w-0 rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-sm">
 				${mine.map((l) => `<option value="${l.id}" ${l.has_item ? 'disabled' : ''}>${esc(l.title)}${l.has_item ? ' ✓ (allerede i listen)' : ''}</option>`).join('')}
-				<option value="new">➕ Ny liste…</option>
 			</select>
-			<button id="ml-add" class="shrink-0 rounded-lg bg-amber-400 text-slate-900 font-semibold px-4 text-sm">Legg til</button>
-		</div>
+			<button id="ml-add" ${free.length ? '' : 'disabled'} class="shrink-0 rounded-lg bg-amber-400 text-slate-900 font-semibold px-4 text-sm disabled:opacity-40">Legg til</button>
+		</div>`
+				: '<p class="text-slate-400">Du har ingen lister ennå.</p>'
+		}
+		<button id="ml-new-toggle" class="mt-2 w-full rounded-lg bg-slate-900 border border-slate-700 hover:border-amber-400 py-2 text-sm font-semibold">➕ Opprett ny liste med denne filmen</button>
 		<div id="ml-new" class="hidden mt-2 space-y-2">
 			<input id="ml-title" maxlength="100" autocomplete="off" placeholder="Navn på ny liste, f.eks. Film noir" class="${INPUT_CLS}" />
-			<label class="flex items-center gap-2 text-sm text-slate-300"><input id="ml-ranked" type="checkbox" /> Rangert liste</label>
+			<label class="flex items-center gap-2 text-sm text-slate-300"><input id="ml-ranked" type="checkbox" /> Rangert liste (nummerert)</label>
+			<button id="ml-create" class="w-full rounded-lg bg-amber-400 text-slate-900 font-semibold py-2 text-sm">Opprett og legg til</button>
 		</div>
 		<p id="ml-msg" class="text-sm mt-2 ${message ? 'text-emerald-300' : 'hidden'}">${esc(message)}</p>`;
 	const sel = $('#ml-select');
-	sel.value = firstFree ? String(firstFree.id) : 'new';
-	const syncNew = () => $('#ml-new').classList.toggle('hidden', sel.value !== 'new');
-	syncNew();
-	sel.addEventListener('change', syncNew);
+	if (sel && free.length) sel.value = String(free[0].id);
 
-	$('#ml-add').addEventListener('click', async () => {
+	const item = { tmdb_id: movie.id, media_type: mt, title: movie.title, year: movie.year || null, poster_path: movie.poster_path || null };
+	const fail = (t) => {
 		const msg = $('#ml-msg');
-		const fail = (t) => {
-			msg.textContent = t;
-			msg.className = 'text-sm mt-2 text-red-400';
-		};
-		const item = { tmdb_id: movie.id, media_type: mt, title: movie.title, year: movie.year || null, poster_path: movie.poster_path || null };
+		msg.textContent = t;
+		msg.className = 'text-sm mt-2 text-red-400';
+	};
+	const done = (name) => {
+		initModalLists(movie, mt, `✓ Lagt til i «${name}»`);
+		if (!$('#tab-lists').classList.contains('hidden')) loadLists();
+	};
+
+	$('#ml-new-toggle').addEventListener('click', () => {
+		$('#ml-new').classList.toggle('hidden');
+		if (!$('#ml-new').classList.contains('hidden')) $('#ml-title').focus();
+	});
+
+	$('#ml-add')?.addEventListener('click', async () => {
+		const id = Number(sel.value);
 		$('#ml-add').disabled = true;
 		try {
-			let listId2 = Number(sel.value);
-			let name = mine.find((l) => l.id === listId2)?.title;
-			if (sel.value === 'new') {
-				name = $('#ml-title').value.trim();
-				if (!name) {
-					$('#ml-add').disabled = false;
-					return fail('Gi den nye listen et navn.');
-				}
-				const r = await api('/api/lists', { method: 'POST', body: JSON.stringify({ username: me, title: name, ranked: $('#ml-ranked').checked }) });
-				listId2 = r.id;
-			}
-			await api(`/api/lists/${listId2}/items`, { method: 'POST', body: JSON.stringify(item) });
-			initModalLists(movie, mt, `✓ Lagt til i «${name}»`);
-			if (!$('#tab-lists').classList.contains('hidden')) loadLists();
+			await api(`/api/lists/${id}/items`, { method: 'POST', body: JSON.stringify(item) });
+			done(mine.find((l) => l.id === id)?.title ?? '');
 		} catch (err) {
 			$('#ml-add').disabled = false;
+			fail(err.message);
+		}
+	});
+
+	$('#ml-create').addEventListener('click', async () => {
+		const name = $('#ml-title').value.trim();
+		if (!name) return fail('Gi den nye listen et navn.');
+		$('#ml-create').disabled = true;
+		try {
+			const r = await api('/api/lists', { method: 'POST', body: JSON.stringify({ username: me, title: name, ranked: $('#ml-ranked').checked }) });
+			await api(`/api/lists/${r.id}/items`, { method: 'POST', body: JSON.stringify(item) });
+			done(name);
+		} catch (err) {
+			$('#ml-create').disabled = false;
 			fail(err.message);
 		}
 	});

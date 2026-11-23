@@ -109,6 +109,8 @@ Sammendrag av oppsett, arkitektur og utviklingsarbeid. Filmtips er en ikke-komme
 
 26. Filmvinduet har bare én karakterskala (under «Karakter»). Anbefalingsskjemaet viser valgt karakter som tekst og bruker den; uten karakter må man gi en først.
 
+27. «Mine lister» i filmvinduet: egen synlig knapp «➕ Opprett ny liste med denne filmen» (navn, rangert, «Opprett og legg til») i stedet for et skjult valg nederst i nedtrekkslisten.
+
 ## Kjente begrensninger og mulige neste steg
 
 - Rundt 30 titler må rettes manuelt med «Rett match» (IMDb-kode eller TMDB-lenke). Det koster ingen OMDb-oppslag.
