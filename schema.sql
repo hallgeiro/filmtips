@@ -1,4 +1,4 @@
--- Kjør: npm run db:local   (lokalt)  |  npm run db:remote   (produksjon)
+-- Kjør: npm run db:setup (lokalt)  |  npm run db:setup:remote (produksjon)
 CREATE TABLE IF NOT EXISTS recommendations (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   tmdb_id     INTEGER NOT NULL,

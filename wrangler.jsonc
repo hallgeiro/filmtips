@@ -15,12 +15,12 @@
 		"run_worker_first": ["/api/*"]
 	},
 
-	// Kjør `npx wrangler d1 create filmtips` og lim inn den ekte database_id her (platsholderen under er kun for lokal utvikling).
+	// D1-databasen `filmtips` (opprettet i Cloudflare).
 	"d1_databases": [
 		{
 			"binding": "DB",
 			"database_name": "filmtips",
-			"database_id": "00000000-0000-0000-0000-000000000000"
+			"database_id": "4f6442be-788c-4b71-a21d-c2c4f2cf5b6c"
 		}
 	],
 
