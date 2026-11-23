@@ -26,7 +26,7 @@ async function api(path, opts = {}) {
 
 const fmtDate = (s) =>
 	new Date(s.replace(' ', 'T') + 'Z').toLocaleDateString('nb-NO', { day: 'numeric', month: 'short', year: 'numeric' });
-const dice = (n) => `🎲 ${n}`;
+const dice = (n) => `⭐ ${n}/10`;
 
 /* ---------- Innlogging ---------- */
 let pinUsers = [];
@@ -1414,7 +1414,7 @@ async function openMovie(movie) {
 
 		${isTv ? '' : `<form id="rec-form" class="mt-5 border-t border-slate-700 pt-4 space-y-3">
 			<h3 class="font-semibold">Din anbefaling</h3>
-			<div id="dice" class="flex gap-2"></div>
+			<div id="dice" class="grid grid-cols-5 sm:grid-cols-10 gap-2"></div>
 			<textarea id="comment" rows="3" maxlength="1000" placeholder="Kommentar (valgfritt)"
 				class="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-400"></textarea>
 			<p id="rec-error" class="text-red-400 text-sm hidden"></p>
@@ -1426,10 +1426,10 @@ async function openMovie(movie) {
 	let rating = 0;
 	const renderDice = () => {
 		if (!$('#dice')) return;
-		$('#dice').innerHTML = [1, 2, 3, 4, 5, 6]
+		$('#dice').innerHTML = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 			.map(
-				(n) => `<button type="button" data-n="${n}" aria-label="Terningkast ${n}"
-					class="flex-1 rounded-lg py-2 text-lg font-bold ${n === rating ? 'bg-amber-400 text-slate-900' : 'bg-slate-900 border border-slate-700 hover:border-amber-400'}">${n}</button>`,
+				(n) => `<button type="button" data-n="${n}" aria-label="Karakter ${n} av 10"
+					class="rounded-lg py-2 text-lg font-bold ${n === rating ? 'bg-amber-400 text-slate-900' : 'bg-slate-900 border border-slate-700 hover:border-amber-400'}">${n}</button>`,
 			)
 			.join('');
 	};
@@ -1509,7 +1509,7 @@ async function openMovie(movie) {
 		const err = $('#rec-error');
 		err.classList.add('hidden');
 		if (!me) return showErr('Velg navnet ditt øverst først.');
-		if (!rating) return showErr('Velg terningkast 1–6.');
+		if (!rating) return showErr('Velg karakter 1–10.');
 		try {
 			await api('/api/recommendations', {
 				method: 'POST',

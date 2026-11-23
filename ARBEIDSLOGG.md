@@ -37,7 +37,7 @@ Sammendrag av oppsett, arkitektur og utviklingsarbeid. Filmtips er en ikke-komme
 ## Funksjoner
 
 - **Søk (TMDB):** norske titler, strømmetjenester i Norge (JustWatch via TMDB), også IMDb-kode eller -lenke.
-- **Anbefalinger:** terningkast 1–6, kommentar, én anbefaling per bruker per film. Gjelder kun filmer.
+- **Anbefalinger:** karakter 1–10 (vises som ⭐ 8/10), kommentar, én anbefaling per bruker per film. Gjelder kun filmer.
 - **Bibliotek:** importert fra CLZ Movies (CSV), adskilt fra anbefalinger. Formater (Blu-ray, 4K UHD, DVD, Digital) vises. Anbefalte filmer som finnes i biblioteket merkes med format.
 - **Fysisk bibliotek og filsamling:** bytte øverst i Bibliotek-fanen. Filsamling = filmer med format `Digital` (vises som «Fil»). Samme film kan være i begge. Neste steg ved behov: egne felt for filer (kvalitet, lagringssted).
 - **Sortering og filter:** tittel, år (nyest/eldst), regissør, tiår (nedtrekksliste), format og regissør.
@@ -102,6 +102,8 @@ Sammendrag av oppsett, arkitektur og utviklingsarbeid. Filmtips er en ikke-komme
 22. Filmlister: ny fane «Lister». Tabeller `film_lists` og `film_list_items` (opprettet i remote D1 før push). Brukerne lager lister (rangert eller ikke, med beskrivelse), alle ser alle, eieren/admin endrer. Filmer legges til via søk som slår opp i både biblioteket (`/api/library`) og TMDB (`/api/search`). Biblioteksfilmer uten TMDB-treff kan ikke legges i lister. Rangerte lister har ▲/▼ (`POST .../move`). Fanelinjen kan rulles sideveis.
 
 23. Filmvinduet har «Mine lister»: nedtrekksliste med egne lister (lister som allerede har filmen er avmerket) og «Ny liste…» som lager listen og legger filmen inn i ett steg. Gjelder både film og TV, fra Søk, Bibliotek, Feed og lister. `GET /api/lists?tmdb_id=&media_type=` gir `has_item` per liste.
+
+24. Karakter 1–10 i stedet for terningkast 1–6. Gamle karakterer er omregnet (1→2, 2→3, 3→5, 4→7, 5→8, 6→10). Tabellen `recommendations` må bygges om i remote D1 (CHECK-sperren kan ikke endres med ALTER): ny tabell `recommendations_new` med CHECK 1–10, kopier data, drop gammel, rename, lag indeksene på nytt.
 
 ## Kjente begrensninger og mulige neste steg
 

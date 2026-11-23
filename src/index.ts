@@ -344,7 +344,7 @@ app.post('/api/recommendations', async (c) => {
 		if (!me) return c.json({ error: 'Velg navnet ditt først' }, 403)
 		if (username !== me) return c.json({ error: `Du kan bare anbefale som ${me}` }, 403)
 	}
-	if (!Number.isInteger(rating) || rating < 1 || rating > 6) return c.json({ error: 'Terningkast må være 1–6' }, 400)
+	if (!Number.isInteger(rating) || rating < 1 || rating > 10) return c.json({ error: 'Karakter må være 1–10' }, 400)
 	if (comment.length > 1000) return c.json({ error: 'Kommentaren er for lang (maks 1000 tegn)' }, 400)
 
 	await c.env.DB.prepare(

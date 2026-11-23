@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS recommendations (
   title       TEXT    NOT NULL,
   poster_path TEXT,
   username    TEXT    NOT NULL,
-  rating      INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 6),
+  rating      INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 10),  -- karakter 1–10 (var 1–6 terningkast før)
   comment     TEXT,
   created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
   -- Hver person har én anbefaling per film (kan oppdateres)
