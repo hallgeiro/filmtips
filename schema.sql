@@ -15,6 +15,19 @@ CREATE TABLE IF NOT EXISTS recommendations (
 CREATE INDEX IF NOT EXISTS idx_recommendations_created ON recommendations (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_recommendations_tmdb ON recommendations (tmdb_id);
 
+-- Karakterer 1–10: alle brukere, film og TV. Karakter i en anbefaling lagres også her.
+CREATE TABLE IF NOT EXISTS ratings (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  tmdb_id     INTEGER NOT NULL,
+  media_type  TEXT    NOT NULL DEFAULT 'movie',         -- 'movie' eller 'tv'
+  title       TEXT    NOT NULL,
+  poster_path TEXT,
+  username    TEXT    NOT NULL,
+  rating      INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 10),
+  updated_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (tmdb_id, media_type, username)
+);
+
 -- Kommentarer på andres (og egne) anbefalinger
 CREATE TABLE IF NOT EXISTS rec_comments (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,

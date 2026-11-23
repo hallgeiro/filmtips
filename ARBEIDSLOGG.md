@@ -18,7 +18,7 @@ Sammendrag av oppsett, arkitektur og utviklingsarbeid. Filmtips er en ikke-komme
 | Fil | Innhold |
 | --- | --- |
 | `wrangler.jsonc` | Worker-konfig, D1-binding, assets (`run_worker_first: ["/api/*"]`), custom domain, `USERS` |
-| `schema.sql` | Tabellene `recommendations`, `rec_comments`, `film_lists`, `film_list_items`, `user_pins`, `library` (inkl. `media_type`, `collection`), `movie_nights`, `wishes`, `wish_votes` + indekser |
+| `schema.sql` | Tabellene `recommendations`, `ratings`, `rec_comments`, `film_lists`, `film_list_items`, `user_pins`, `library` (inkl. `media_type`, `collection`), `movie_nights`, `wishes`, `wish_votes` + indekser |
 | `ARBEIDSLOGG.md` | Denne filen: struktur, arbeidsmåte og status |
 | `src/index.ts` | Hele backend (Hono): auth, TMDB-søk, anbefalinger, bibliotek, admin |
 | `public/index.html` | UI: login, faner (Søk / Anbefalinger / Bibliotek), modaler |
@@ -103,7 +103,9 @@ Sammendrag av oppsett, arkitektur og utviklingsarbeid. Filmtips er en ikke-komme
 
 23. Filmvinduet har «Mine lister»: nedtrekksliste med egne lister (lister som allerede har filmen er avmerket) og «Ny liste…» som lager listen og legger filmen inn i ett steg. Gjelder både film og TV, fra Søk, Bibliotek, Feed og lister. `GET /api/lists?tmdb_id=&media_type=` gir `has_item` per liste.
 
-24. Karakter 1–10 i stedet for terningkast 1–6. Gamle karakterer er omregnet (1→2, 2→3, 3→5, 4→7, 5→8, 6→10). Tabellen `recommendations` må bygges om i remote D1 (CHECK-sperren kan ikke endres med ALTER): ny tabell `recommendations_new` med CHECK 1–10, kopier data, drop gammel, rename, lag indeksene på nytt.
+24. Karakter 1–10 i stedet for terningkast 1–6. Gamle karakterer er omregnet (1→2, 2→3, 3→5, 4→7, 5→8, 6→10). Tabellen `recommendations` ble bygget om i remote D1 (CHECK-sperren kan ikke endres med ALTER): ny tabell med CHECK 1–10, kopiert data, droppet gammel, rename, indekser på nytt.
+
+25. Karakter uten anbefaling: tabell `ratings` (tmdb_id, media_type, username, rating 1–10), for film og TV. Filmvinduet har «Karakter» med snitt, hvem som ga hva og et rutenett 1–10 som lagrer med ett trykk (trykk igjen for å fjerne). Karakter i en anbefaling lagres også i `ratings`, og endres karakteren her, følger en eksisterende anbefaling med. Har man en anbefaling, kan karakteren ikke fjernes uten å slette anbefalingen. `recommendations` er bygget om i remote D1 med CHECK 1–10 (gamle karakterer omregnet), og eksisterende karakterer er kopiert til `ratings`.
 
 ## Kjente begrensninger og mulige neste steg
 

@@ -1383,6 +1383,50 @@ async function initModalLists(movie, mt, message = '') {
 	});
 }
 
+// «Karakter» i filmvinduet: snitt, hvem som har gitt hva, og din egen karakter (1–10) som lagres med ett trykk
+async function initRatings(movie, mt, onMine) {
+	const box = $('#ratings');
+	if (!box) return;
+	let data;
+	try {
+		data = await api(`/api/ratings?tmdb_id=${movie.id}&media_type=${mt}`);
+	} catch (err) {
+		box.textContent = err.message;
+		return;
+	}
+	const mine = data.results.find((r) => r.username === me)?.rating ?? 0;
+	if (mine && onMine) onMine(mine);
+	box.innerHTML = `
+		<div class="text-slate-300">${data.count ? `<span class="text-amber-300 font-semibold">⭐ ${data.avg}/10</span> snitt · ${data.count} ${data.count === 1 ? 'karakter' : 'karakterer'}` : 'Ingen har gitt karakter ennå.'}</div>
+		${data.count ? `<div class="flex flex-wrap gap-2 mt-2">${data.results.map((r) => `<span class="rounded-full bg-slate-900 px-2 py-1 text-xs text-slate-300">${esc(r.username)} <b class="text-amber-300">${r.rating}</b></span>`).join('')}</div>` : ''}
+		${
+			me
+				? `<div class="mt-3 text-slate-400">Din karakter${mine ? `: <b class="text-amber-300">${mine}</b>` : ''}</div>
+		<div id="rate-grid" class="grid grid-cols-5 sm:grid-cols-10 gap-2 mt-1">${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+			.map((n) => `<button type="button" data-rate="${n}" aria-label="Karakter ${n} av 10" class="rounded-lg py-2 text-lg font-bold ${n === mine ? 'bg-amber-400 text-slate-900' : 'bg-slate-900 border border-slate-700 hover:border-amber-400'}">${n}</button>`)
+			.join('')}</div>
+		<p id="rate-msg" class="text-xs text-red-400 mt-1 hidden"></p>
+		${mine ? '<p class="text-xs text-slate-500 mt-1">Trykk på din karakter igjen for å fjerne den.</p>' : ''}`
+				: '<p class="mt-2 text-xs text-slate-500">Velg navnet ditt for å gi karakter.</p>'
+		}`;
+	$('#rate-grid')?.addEventListener('click', async (e) => {
+		const b = e.target.closest('[data-rate]');
+		if (!b) return;
+		const n = Number(b.dataset.rate);
+		try {
+			await api('/api/ratings', {
+				method: 'POST',
+				body: JSON.stringify({ tmdb_id: movie.id, media_type: mt, title: movie.title, poster_path: movie.poster_path || null, username: me, rating: n === mine ? null : n }),
+			});
+			initRatings(movie, mt, mt === 'movie' && n !== mine ? (r) => onMine && onMine(r, true) : null);
+		} catch (err) {
+			const m = $('#rate-msg');
+			m.textContent = err.message;
+			m.classList.remove('hidden');
+		}
+	});
+}
+
 async function openMovie(movie) {
 	const mt = movie.media_type === 'tv' ? 'tv' : 'movie';
 	const isTv = mt === 'tv';
@@ -1402,6 +1446,9 @@ async function openMovie(movie) {
 
 		<h3 class="font-semibold mt-5 mb-2">Hvor kan du se den i Norge?</h3>
 		<div id="providers" class="text-sm text-slate-400">Henter…</div>
+
+		<h3 class="font-semibold mt-5 mb-2">Karakter</h3>
+		<div id="ratings" class="text-sm text-slate-400">Henter…</div>
 
 		<h3 class="font-semibold mt-5 mb-2">Mine lister</h3>
 		<div id="modal-lists" class="text-sm text-slate-400">Henter…</div>
@@ -1434,6 +1481,13 @@ async function openMovie(movie) {
 			.join('');
 	};
 	renderDice();
+	// Har du allerede gitt karakter (uten anbefaling), forhåndsvelges den i anbefalingsskjemaet
+	initRatings(movie, mt, (r, force) => {
+		if (!rating || force) {
+			rating = r;
+			renderDice();
+		}
+	});
 	$('#dice')?.addEventListener('click', (e) => {
 		const b = e.target.closest('button');
 		if (b) {

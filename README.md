@@ -42,6 +42,8 @@ Alle `/api/*`-ruter krever innloggingscookie (PIN-identitet eller admin), unntat
 | `GET /api/recommendations[?tmdb_id=]` | hent anbefalinger |
 | `POST /api/recommendations` | lagre/oppdater (én per person per film) |
 | `DELETE /api/recommendations/:id?username=` | slett egen anbefaling (admin kan slette alle) |
+| `GET /api/ratings?tmdb_id=&media_type=` | alle karakterer (1–10) på en film/serie, med snitt |
+| `POST /api/ratings` | `{username, tmdb_id, media_type, title, poster_path, rating}` gir din karakter (`rating: null` fjerner den) |
 | `GET /api/recommendations/:id/comments` | kommentarer på en anbefaling |
 | `POST /api/recommendations/:id/comments` | `{username, body}` (maks 500 tegn) legger til kommentar som deg selv |
 | `DELETE /api/comments/:id` | slett egen kommentar (admin kan slette alle) |

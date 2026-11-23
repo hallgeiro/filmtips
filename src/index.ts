@@ -359,6 +359,13 @@ app.post('/api/recommendations', async (c) => {
 	)
 		.bind(tmdb_id, title, poster_path, username, rating, comment || null)
 		.run()
+	// Karakteren i anbefalingen er også brukerens karakter på filmen
+	await c.env.DB.prepare(
+		`INSERT INTO ratings (tmdb_id, media_type, title, poster_path, username, rating) VALUES (?, 'movie', ?, ?, ?, ?)
+		 ON CONFLICT (tmdb_id, media_type, username) DO UPDATE SET title = excluded.title, poster_path = excluded.poster_path, rating = excluded.rating, updated_at = datetime('now')`,
+	)
+		.bind(tmdb_id, title, poster_path, username, rating)
+		.run()
 
 	return c.json({ ok: true }, 201)
 })
@@ -377,6 +384,58 @@ app.delete('/api/recommendations/:id', async (c) => {
 	const res = await c.env.DB.prepare(`DELETE FROM recommendations WHERE id = ? AND username = ?`).bind(id, username).run()
 	if (res.meta.changes) await c.env.DB.prepare(`DELETE FROM rec_comments WHERE rec_id = ?`).bind(id).run()
 	return c.json({ ok: true, deleted: res.meta.changes })
+})
+
+/* ---------- Karakterer (1–10, alle brukere, film og TV) ---------- */
+
+app.get('/api/ratings', async (c) => {
+	const tmdbId = Number(c.req.query('tmdb_id'))
+	const mediaType = c.req.query('media_type') === 'tv' ? 'tv' : 'movie'
+	if (!Number.isInteger(tmdbId) || tmdbId <= 0) return c.json({ error: 'Ugyldig film' }, 400)
+	const { results } = await c.env.DB.prepare(`SELECT username, rating FROM ratings WHERE tmdb_id = ? AND media_type = ? ORDER BY updated_at DESC, id DESC`)
+		.bind(tmdbId, mediaType)
+		.all<{ username: string; rating: number }>()
+	const count = results.length
+	const avg = count ? Math.round((results.reduce((a, r) => a + r.rating, 0) / count) * 10) / 10 : null
+	return c.json({ results, count, avg })
+})
+
+// Gi (eller fjern, med rating: null) din karakter på en film eller serie
+app.post('/api/ratings', async (c) => {
+	const b = await c.req.json<any>().catch(() => null)
+	if (!b) return c.json({ error: 'Ugyldig JSON' }, 400)
+	const who = await actAs(c, b.username)
+	if ('error' in who) return c.json({ error: who.error }, who.status)
+	const tmdb_id = Number(b.tmdb_id)
+	const media_type = b.media_type === 'tv' ? 'tv' : 'movie'
+	if (!Number.isInteger(tmdb_id) || tmdb_id <= 0) return c.json({ error: 'Ugyldig film' }, 400)
+
+	if (b.rating === null || b.rating === 0) {
+		// Har du en anbefaling på filmen, hører karakteren til den. Slett anbefalingen først.
+		if (media_type === 'movie') {
+			const rec = await c.env.DB.prepare(`SELECT 1 AS ok FROM recommendations WHERE tmdb_id = ? AND username = ?`).bind(tmdb_id, who.user).first()
+			if (rec) return c.json({ error: 'Du har en anbefaling på denne filmen. Endre karakteren der, eller slett anbefalingen først.' }, 400)
+		}
+		await c.env.DB.prepare(`DELETE FROM ratings WHERE tmdb_id = ? AND media_type = ? AND username = ?`).bind(tmdb_id, media_type, who.user).run()
+		return c.json({ ok: true })
+	}
+
+	const rating = Number(b.rating)
+	const title = String(b.title ?? '').trim()
+	const poster_path = typeof b.poster_path === 'string' && /^\/[\w.-]+$/.test(b.poster_path) ? b.poster_path : null
+	if (!Number.isInteger(rating) || rating < 1 || rating > 10) return c.json({ error: 'Karakter må være 1–10' }, 400)
+	if (!title || title.length > 200) return c.json({ error: 'Ugyldig tittel' }, 400)
+	await c.env.DB.prepare(
+		`INSERT INTO ratings (tmdb_id, media_type, title, poster_path, username, rating) VALUES (?, ?, ?, ?, ?, ?)
+		 ON CONFLICT (tmdb_id, media_type, username) DO UPDATE SET title = excluded.title, poster_path = excluded.poster_path, rating = excluded.rating, updated_at = datetime('now')`,
+	)
+		.bind(tmdb_id, media_type, title, poster_path, who.user, rating)
+		.run()
+	// Hold en eventuell anbefaling i samsvar med karakteren
+	if (media_type === 'movie') {
+		await c.env.DB.prepare(`UPDATE recommendations SET rating = ? WHERE tmdb_id = ? AND username = ?`).bind(rating, tmdb_id, who.user).run()
+	}
+	return c.json({ ok: true })
 })
 
 /* ---------- Kommentarer på anbefalinger ---------- */
