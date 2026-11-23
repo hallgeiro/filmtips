@@ -5,6 +5,7 @@ type Bindings = {
 	DB: D1Database
 	ASSETS: Fetcher
 	APP_PASSWORD: string
+	ADMIN_PASSWORD?: string
 	TMDB_API_KEY: string
 	USERS: string
 }
@@ -13,6 +14,7 @@ type Ctx = Context<{ Bindings: Bindings }>
 const app = new Hono<{ Bindings: Bindings }>()
 
 const COOKIE = 'filmtips_session'
+const ADMIN_COOKIE = 'filmtips_admin'
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 90 // 90 dager
 const enc = new TextEncoder()
 
@@ -28,9 +30,9 @@ async function safeEqual(a: string, b: string): Promise<boolean> {
 }
 
 // Økt-token = HMAC(passord, fast streng). Bytter du passord, logges alle ut.
-async function sessionToken(password: string): Promise<string> {
+async function sessionToken(password: string, label = 'filmtips-session-v1'): Promise<string> {
 	const key = await crypto.subtle.importKey('raw', enc.encode(password), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
-	const sig = await crypto.subtle.sign('HMAC', key, enc.encode('filmtips-session-v1'))
+	const sig = await crypto.subtle.sign('HMAC', key, enc.encode(label))
 	return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, '0')).join('')
 }
 
@@ -70,7 +72,34 @@ app.use('/api/*', async (c, next) => {
 const getUsers = (env: Bindings) =>
 	(env.USERS ?? '').split(',').map((s) => s.trim()).filter(Boolean)
 
-app.get('/api/config', (c) => c.json({ users: getUsers(c.env) }))
+// Admin: eget passord (secret ADMIN_PASSWORD). Gir lov til å slette andres anbefalinger.
+async function isAdmin(c: Ctx): Promise<boolean> {
+	const pw = c.env.ADMIN_PASSWORD
+	const cookie = getCookie(c, ADMIN_COOKIE)
+	if (!pw || !cookie) return false
+	return safeEqual(cookie, await sessionToken(pw, 'filmtips-admin-v1'))
+}
+
+app.get('/api/config', async (c) => c.json({ users: getUsers(c.env), admin: await isAdmin(c) }))
+
+app.post('/api/admin/login', async (c) => {
+	if (!c.env.ADMIN_PASSWORD) return c.json({ error: 'Serverfeil: secret ADMIN_PASSWORD er ikke satt på denne Workeren' }, 500)
+	const body = await c.req.json<{ password?: string }>().catch(() => ({} as { password?: string }))
+	if (!(await safeEqual(String(body.password ?? ''), c.env.ADMIN_PASSWORD))) return c.json({ error: 'Feil admin-passord' }, 401)
+	setCookie(c, ADMIN_COOKIE, await sessionToken(c.env.ADMIN_PASSWORD, 'filmtips-admin-v1'), {
+		httpOnly: true,
+		secure: new URL(c.req.url).protocol === 'https:',
+		sameSite: 'Lax',
+		path: '/',
+		maxAge: COOKIE_MAX_AGE,
+	})
+	return c.json({ ok: true })
+})
+
+app.post('/api/admin/logout', (c) => {
+	deleteCookie(c, ADMIN_COOKIE, { path: '/' })
+	return c.json({ ok: true })
+})
 
 /* ---------- TMDB ---------- */
 
@@ -187,11 +216,16 @@ app.post('/api/recommendations', async (c) => {
 	return c.json({ ok: true }, 201)
 })
 
-// Tillitsbasert: du kan slette egne anbefalinger ved å oppgi navnet ditt
 app.delete('/api/recommendations/:id', async (c) => {
 	const id = Number(c.req.param('id'))
+	if (!Number.isInteger(id)) return c.json({ error: 'Ugyldig forespørsel' }, 400)
+	// Admin kan slette alle. Andre kan bare slette egne (tillitsbasert på navn).
+	if (await isAdmin(c)) {
+		const res = await c.env.DB.prepare(`DELETE FROM recommendations WHERE id = ?`).bind(id).run()
+		return c.json({ ok: true, deleted: res.meta.changes })
+	}
 	const username = (c.req.query('username') ?? '').trim()
-	if (!Number.isInteger(id) || !username) return c.json({ error: 'Ugyldig forespørsel' }, 400)
+	if (!username) return c.json({ error: 'Ugyldig forespørsel' }, 400)
 	const res = await c.env.DB.prepare(`DELETE FROM recommendations WHERE id = ? AND username = ?`).bind(id, username).run()
 	return c.json({ ok: true, deleted: res.meta.changes })
 })

@@ -4,6 +4,7 @@ const esc = (s) =>
 	String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 let users = [];
+let isAdmin = false;
 let me = localStorage.getItem('filmtips_user') || '';
 let searchTimer;
 
@@ -50,15 +51,40 @@ $('#logout').addEventListener('click', async () => {
 	showLogin();
 });
 
+/* ---------- Admin ---------- */
+function renderAdmin() {
+	$('#admin').textContent = isAdmin ? 'Admin ✓' : 'Admin';
+	$('#admin').title = isAdmin ? 'Logg ut som admin' : 'Logg inn som admin';
+}
+
+$('#admin').addEventListener('click', async () => {
+	try {
+		if (isAdmin) {
+			await api('/api/admin/logout', { method: 'POST' });
+			isAdmin = false;
+		} else {
+			const password = prompt('Admin-passord:');
+			if (!password) return;
+			await api('/api/admin/login', { method: 'POST', body: JSON.stringify({ password }) });
+			isAdmin = true;
+		}
+		renderAdmin();
+		if (!$('#tab-feed').classList.contains('hidden')) loadFeed();
+	} catch (err) {
+		alert(err.message);
+	}
+});
+
 /* ---------- Oppstart ---------- */
 async function start() {
 	try {
-		({ users } = await api('/api/config'));
+		({ users, admin: isAdmin } = await api('/api/config'));
 	} catch {
 		return; // showLogin() er allerede kalt ved 401
 	}
 	$('#login').classList.add('hidden');
 	$('#app').classList.remove('hidden');
+	renderAdmin();
 
 	if (!users.includes(me)) me = '';
 	$('#user').innerHTML =
@@ -259,7 +285,7 @@ async function openMovie(movie) {
 					.map(
 						(r) => `<div class="bg-slate-900 rounded-lg p-3">
 							<div class="text-amber-300">${dice(r.rating)} <span class="text-slate-400">· ${esc(r.username)} · ${fmtDate(r.created_at)}</span>
-								${r.username === me ? `<button data-del="${r.id}" class="float-right text-xs text-red-400 hover:underline">Slett</button>` : ''}</div>
+								${r.username === me || isAdmin ? `<button data-del="${r.id}" class="float-right text-xs text-red-400 hover:underline">Slett</button>` : ''}</div>
 							${r.comment ? `<p class="text-slate-300 mt-1 break-words">${esc(r.comment)}</p>` : ''}
 						</div>`,
 					)
@@ -277,7 +303,7 @@ async function openMovie(movie) {
 
 	$('#recs').addEventListener('click', async (e) => {
 		const id = e.target.dataset.del;
-		if (!id || !confirm('Slette anbefalingen din?')) return;
+		if (!id || !confirm('Slette denne anbefalingen?')) return;
 		await api(`/api/recommendations/${id}?username=${encodeURIComponent(me)}`, { method: 'DELETE' });
 		openMovie(movie);
 		if (!$('#tab-feed').classList.contains('hidden')) loadFeed();

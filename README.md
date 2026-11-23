@@ -40,9 +40,11 @@ Alle `/api/*`-ruter unntatt `/api/login` krever innloggingscookie.
 | `GET /api/movie/:id/providers` | strømmetjenester i Norge |
 | `GET /api/recommendations[?tmdb_id=]` | hent anbefalinger |
 | `POST /api/recommendations` | lagre/oppdater (én per person per film) |
-| `DELETE /api/recommendations/:id?username=` | slett egen anbefaling |
+| `DELETE /api/recommendations/:id?username=` | slett egen anbefaling (admin kan slette alle) |
+| `POST /api/admin/login` / `logout` | `{password}` mot `ADMIN_PASSWORD` gir admin-cookie |
 
 ## Merknader
 
+- Admin: sett secret `ADMIN_PASSWORD`. Trykk «Admin» øverst i appen og skriv passordet for å kunne slette andres anbefalinger. Uten admin kan man bare slette egne (tillitsbasert på valgt navn).
 - Sikkerheten er bevisst enkel (felles passord, tillitsbasert navnevalg), tilpasset familie og venner.
 - TMDB krever attribusjon. Strømdata kommer fra JustWatch. Begge er kreditert i bunnteksten.
