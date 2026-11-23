@@ -132,6 +132,7 @@ Sammendrag av oppsett, arkitektur og utviklingsarbeid. Filmtips er en ikke-komme
 37. «Sett» er en egen, festet liste nederst i Lister-fanen (kort med øye-ikon, antall filmer, med karakter og snitt for innlogget bruker). Trykk på kortet for å åpne Sett-visningen (velg bruker, filtre, sortering), med «← Alle lister» tilbake. Det er ingen egen fane i hovedmenyen. `#tab-seen` ligger inni `#tab-lists`, og `listsSub` styrer hva som vises.
 38. Plakatene på listekortene overlappet teksten (4 plakater i en for smal kolonne). Nå maks 3 plakater i en bredere kolonne (`w-24`). «Sett»-kortet ligger nå nederst i Lister, etter de vanlige listene.
 39. Feilretting: «Sett»-kortet ble utilsiktet borte da det ble flyttet nederst (variabelen `seenCard` ble ikke lagt til i `#lists-list`). Nå lagt til etter de vanlige listene igjen.
+40. «Sett» vises nå som ett kort per bruker nederst i Lister (ditt eget først, så de andres) med plakater, antall, med karakter og snitt. Trykk på et kort åpner Sett-visningen direkte for den brukeren (`data-list-seen` bærer brukernavnet).
 
 ## Kjente begrensninger og mulige neste steg
 

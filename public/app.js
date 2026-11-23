@@ -1048,25 +1048,30 @@ async function loadLists() {
 	$('#list-detail').classList.add('hidden');
 	$('#lists-status').textContent = 'Henter…';
 	try {
-		const [{ results }, mineSeen] = await Promise.all([
+		const seenUsers = [...(users.includes(me) ? [me] : []), ...users.filter((u) => u !== me)]
+		const [{ results }, ...seenAll] = await Promise.all([
 			api('/api/lists'),
-			me ? api(`/api/films/${encodeURIComponent(me)}`).then((r) => r.results).catch(() => []) : Promise.resolve([]),
-		]);
-		$('#lists-status').textContent = results.length ? '' : 'Ingen lister ennå. Lag den første!';
-		const ratedSeen = mineSeen.filter((m) => m.rating);
-		const avgSeen = ratedSeen.length ? Math.round((ratedSeen.reduce((a, m) => a + m.rating, 0) / ratedSeen.length) * 10) / 10 : null;
-		const seenPosters = mineSeen.filter((m) => m.poster_path).slice(0, 3).map((m) => m.poster_path);
-		const seenCard = `
-			<button data-list-seen class="w-full text-left bg-slate-800 rounded-xl p-3 hover:ring-2 hover:ring-amber-400 flex gap-3 ring-1 ring-slate-700">
+			...seenUsers.map((u) => api(`/api/films/${encodeURIComponent(u)}`).then((r) => r.results).catch(() => [])),
+		])
+		$('#lists-status').textContent = results.length ? '' : 'Ingen lister ennå. Lag den første!'
+		const seenCard = seenUsers
+			.map((u, i) => {
+				const mineSeen = seenAll[i]
+				const ratedSeen = mineSeen.filter((m) => m.rating)
+				const avgSeen = ratedSeen.length ? Math.round((ratedSeen.reduce((a, m) => a + m.rating, 0) / ratedSeen.length) * 10) / 10 : null
+				const seenPosters = mineSeen.filter((m) => m.poster_path).slice(0, 3).map((m) => m.poster_path)
+				return `
+			<button data-list-seen="${esc(u)}" class="w-full text-left bg-slate-800 rounded-xl p-3 hover:ring-2 hover:ring-amber-400 flex gap-3 ring-1 ring-slate-700">
 				<div class="flex -space-x-3 shrink-0 items-center w-24 ${seenPosters.length ? '' : 'justify-center text-slate-300'}">
 					${seenPosters.length ? seenPosters.map((pp) => `<img src="${IMG}w92${esc(pp)}" alt="" loading="lazy" class="w-10 aspect-[2/3] object-cover rounded border border-slate-800" />`).join('') : EYE.replace('h-4 w-4', 'h-8 w-8')}
 				</div>
 				<div class="min-w-0">
-					<div class="font-semibold">${EYE} Sett</div>
-					<div class="text-sm text-slate-400">${me ? `av ${esc(me)} · ${mineSeen.length} ${mineSeen.length === 1 ? 'film' : 'filmer'}${ratedSeen.length ? ` · ${ratedSeen.length} med karakter` : ''}${avgSeen ? ` · snitt ${avgSeen}/10` : ''}` : 'Filmer du har sett og gitt karakter'}</div>
-					<p class="text-sm text-slate-300 mt-1">Alle filmer du har sett, med karakter, hvordan og når. Du kan også se de andres.</p>
+					<div class="font-semibold">${EYE} Sett – ${esc(u)}</div>
+					<div class="text-sm text-slate-400">${mineSeen.length} ${mineSeen.length === 1 ? 'film' : 'filmer'}${ratedSeen.length ? ` · ${ratedSeen.length} med karakter` : ''}${avgSeen ? ` · snitt ${avgSeen}/10` : ''}</div>
 				</div>
-			</button>`;
+			</button>`
+			})
+			.join('')
 		$('#lists-list').innerHTML = results
 			.map(
 				(l) => `
@@ -1096,7 +1101,9 @@ $('#list-new').addEventListener('click', () => {
 });
 
 $('#lists-list').addEventListener('click', (e) => {
-	if (e.target.closest('[data-list-seen]')) {
+	const sb = e.target.closest('[data-list-seen]');
+	if (sb) {
+		seenState.user = sb.dataset.listSeen;
 		listsSub = 'seen';
 		applyListsSub();
 		return;
