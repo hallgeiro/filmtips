@@ -51,8 +51,11 @@
 		</nav>
 
 		<section id="tab-search">
-			<input id="q" type="search" placeholder="Søk etter film eller IMDb-kode (tt1234567)…" autocomplete="off"
-				class="w-full rounded-lg bg-slate-800 border border-slate-700 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-400" />
+			<div class="flex gap-2">
+				<input id="q" type="search" placeholder="Søk etter film eller IMDb-kode (tt1234567)…" autocomplete="off"
+					class="flex-1 min-w-0 rounded-lg bg-slate-800 border border-slate-700 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-400" />
+				<button id="search-view" type="button" class="rounded-lg bg-slate-800 border border-slate-700 px-3 text-lg" title="Bytt mellom bildegalleri og liste"></button>
+			</div>
 			<p id="search-status" class="text-slate-400 text-sm mt-3"></p>
 			<div id="results" class="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-3"></div>
 		</section>

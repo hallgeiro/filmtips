@@ -95,6 +95,8 @@ Sammendrag av oppsett, arkitektur og utviklingsarbeid. Filmtips er en ikke-komme
 
 19. Biblioteket: valg mellom bildegalleri og liste (knapp ▦/☰ ved søkefeltet, valget huskes i localStorage). Listevisning har liten plakat, tittel, år/format og regissør på én rad.
 
+20. Liste/galleri-valget gjelder nå også Søk-fanen (egen knapp ved søkefeltet). Valget er felles for Søk og Bibliotek og huskes i localStorage.
+
 ## Kjente begrensninger og mulige neste steg
 
 - Rundt 30 titler må rettes manuelt med «Rett match» (IMDb-kode eller TMDB-lenke). Det koster ingen OMDb-oppslag.

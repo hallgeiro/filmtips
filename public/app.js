@@ -261,9 +261,21 @@ function loadLibView() {
 
 function applyLibView() {
 	const list = lib.view === 'list';
-	$('#lib-list').className = list ? 'flex flex-col gap-2 mt-3' : 'grid grid-cols-2 sm:grid-cols-3 gap-3 mt-3';
-	$('#lib-view').textContent = list ? '▦' : '☰';
-	$('#lib-view').title = list ? 'Vis som bildegalleri' : 'Vis som liste';
+	const cls = list ? 'flex flex-col gap-2 mt-3' : 'grid grid-cols-2 sm:grid-cols-3 gap-3 mt-3';
+	$('#lib-list').className = cls;
+	$('#results').className = cls;
+	for (const id of ['#lib-view', '#search-view']) {
+		$(id).textContent = list ? '▦' : '☰';
+		$(id).title = list ? 'Vis som bildegalleri' : 'Vis som liste';
+	}
+}
+
+function toggleView() {
+	lib.view = lib.view === 'list' ? 'grid' : 'list';
+	try {
+		localStorage.setItem('filmtips_lib_view', lib.view);
+	} catch {}
+	applyLibView();
 }
 
 function renderDecades() {
@@ -405,12 +417,12 @@ $('#lib-formats').addEventListener('click', (e) => {
 });
 $('#lib-more').addEventListener('click', () => loadLibrary(false));
 $('#lib-view').addEventListener('click', () => {
-	lib.view = lib.view === 'list' ? 'grid' : 'list';
-	try {
-		localStorage.setItem('filmtips_lib_view', lib.view);
-	} catch {}
-	applyLibView();
+	toggleView();
 	loadLibrary(true);
+});
+$('#search-view').addEventListener('click', () => {
+	toggleView();
+	renderSearchResults();
 });
 loadLibView();
 applyLibView();
@@ -853,6 +865,7 @@ $('#q').addEventListener('input', (e) => {
 	clearTimeout(searchTimer);
 	const q = e.target.value.trim();
 	if (q.length < 2) {
+		lastSearchResults = [];
 		$('#results').innerHTML = '';
 		$('#search-status').textContent = '';
 		return;
@@ -866,24 +879,43 @@ function posterTag(path, title, size = 'w342') {
 		: `<div class="w-full h-full flex items-center justify-center text-slate-500 text-xs p-2 text-center">${esc(title)}</div>`;
 }
 
+let lastSearchResults = [];
+
+function searchItemHtml(m) {
+	const data = esc(JSON.stringify({ id: m.id, media_type: m.media_type, title: m.title, year: m.year, poster_path: m.poster_path, overview: m.overview }));
+	const meta = `${esc(m.year ?? '')}${m.media_type === 'tv' ? ' · TV' : ''}`;
+	if (lib.view === 'list') {
+		return `
+			<button data-movie='${data}' class="movie w-full text-left bg-slate-800 rounded-xl overflow-hidden flex items-center gap-3 p-2 hover:ring-2 hover:ring-amber-400">
+				<div class="w-10 shrink-0 aspect-[2/3] bg-slate-700 rounded overflow-hidden">${posterTag(m.poster_path, '', 'w92')}</div>
+				<div class="min-w-0 flex-1">
+					<div class="text-sm font-medium leading-tight">${esc(m.title)}</div>
+					<div class="text-xs text-slate-400">${meta}</div>
+				</div>
+			</button>`;
+	}
+	return `
+			<button data-movie='${data}'
+				class="movie text-left bg-slate-800 rounded-xl overflow-hidden hover:ring-2 hover:ring-amber-400">
+				<div class="aspect-[2/3] bg-slate-700">${posterTag(m.poster_path, m.title)}</div>
+				<div class="p-2">
+					<div class="text-sm font-medium leading-tight">${esc(m.title)}</div>
+					<div class="text-xs text-slate-400">${meta}</div>
+				</div>
+			</button>`;
+}
+
+function renderSearchResults() {
+	$('#results').innerHTML = lastSearchResults.map(searchItemHtml).join('');
+}
+
 async function search(q) {
 	$('#search-status').textContent = 'Søker…';
 	try {
 		const { results } = await api('/api/search?q=' + encodeURIComponent(q));
 		$('#search-status').textContent = results.length ? '' : 'Ingen treff.';
-		$('#results').innerHTML = results
-			.map(
-				(m) => `
-			<button data-movie='${esc(JSON.stringify({ id: m.id, media_type: m.media_type, title: m.title, year: m.year, poster_path: m.poster_path, overview: m.overview }))}'
-				class="movie text-left bg-slate-800 rounded-xl overflow-hidden hover:ring-2 hover:ring-amber-400">
-				<div class="aspect-[2/3] bg-slate-700">${posterTag(m.poster_path, m.title)}</div>
-				<div class="p-2">
-					<div class="text-sm font-medium leading-tight">${esc(m.title)}</div>
-					<div class="text-xs text-slate-400">${esc(m.year ?? '')}${m.media_type === 'tv' ? ' · TV' : ''}</div>
-				</div>
-			</button>`,
-			)
-			.join('');
+		lastSearchResults = results;
+		renderSearchResults();
 	} catch (err) {
 		$('#search-status').textContent = err.message;
 	}
