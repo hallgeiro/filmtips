@@ -272,14 +272,10 @@ app.get('/api/recommendations', async (c) => {
 	const limit = Math.min(Math.max(Number(c.req.query('limit')) || 100, 1), 200)
 	const offset = Math.max(Number(c.req.query('offset')) || 0, 0)
 
+	const select = `SELECT r.*, (SELECT group_concat(l.formats, '|') FROM library l WHERE l.tmdb_id = r.tmdb_id) AS library_formats FROM recommendations r`
 	const stmt = tmdbId
-		? c.env.DB.prepare(
-				`SELECT * FROM recommendations WHERE tmdb_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?`,
-			).bind(Number(tmdbId), limit, offset)
-		: c.env.DB.prepare(`SELECT * FROM recommendations ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`).bind(
-				limit,
-				offset,
-			)
+		? c.env.DB.prepare(`${select} WHERE r.tmdb_id = ? ORDER BY r.created_at DESC LIMIT ? OFFSET ?`).bind(Number(tmdbId), limit, offset)
+		: c.env.DB.prepare(`${select} ORDER BY r.created_at DESC, r.id DESC LIMIT ? OFFSET ?`).bind(limit, offset)
 	const { results } = await stmt.all()
 	return c.json({ results })
 })
@@ -335,6 +331,128 @@ app.delete('/api/recommendations/:id', async (c) => {
 	if (!username) return c.json({ error: 'Velg navnet ditt først' }, 403)
 	const res = await c.env.DB.prepare(`DELETE FROM recommendations WHERE id = ? AND username = ?`).bind(id, username).run()
 	return c.json({ ok: true, deleted: res.meta.changes })
+})
+
+/* ---------- Bibliotek (importert fra CLZ Movies) ---------- */
+
+const norm = (s: string) =>
+	s.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, ' ').trim()
+
+type Match = { tmdb_id: number | null; tmdb_title: string | null; poster_path: string | null; match: 'exact' | 'fuzzy' | 'none' }
+
+// Finn film i TMDB ut fra tittel + år. Maks 2 oppslag per film.
+async function matchMovie(c: Ctx, title: string, year: number): Promise<Match> {
+	const none: Match = { tmdb_id: null, tmdb_title: null, poster_path: null, match: 'none' }
+	try {
+		const n = norm(title)
+		const base = norm(title.split(/[:(]/)[0])
+		const pick = (r: any) => ({ tmdb_id: r.id as number, tmdb_title: (r.title ?? null) as string | null, poster_path: (r.poster_path ?? null) as string | null })
+		const ry = (r: any) => Number((r.release_date ?? '').slice(0, 4)) || 0
+		const titleEq = (r: any, x: string) => norm(r.title ?? '') === x || norm(r.original_title ?? '') === x
+		const params = { query: title, language: 'en-US', include_adult: 'false' }
+
+		const a: any[] = year ? ((await tmdb(c, '/search/movie', { ...params, primary_release_year: String(year) })).results ?? []) : []
+		const exact = a.find((r) => titleEq(r, n))
+		if (exact) return { ...pick(exact), match: 'exact' }
+
+		const b: any[] = (await tmdb(c, '/search/movie', params)).results ?? []
+		const near = b.find((r) => titleEq(r, n) && (!year || Math.abs(ry(r) - year) <= 1))
+		if (near) return { ...pick(near), match: 'exact' }
+
+		// Usikker treff: samme år, og tittelen ligner (del av tittel, f.eks. uten undertittel)
+		const fuzzy = a.find((r) => {
+			const t = norm(r.title ?? '')
+			return titleEq(r, base) || (base.length >= 4 && (t.includes(base) || base.includes(t)))
+		})
+		if (fuzzy) return { ...pick(fuzzy), match: 'fuzzy' }
+		return none
+	} catch {
+		return none
+	}
+}
+
+app.get('/api/library', async (c) => {
+	const q = (c.req.query('q') ?? '').trim()
+	const format = (c.req.query('format') ?? '').trim()
+	const tmdbId = Number(c.req.query('tmdb_id')) || 0
+	const unmatched = c.req.query('unmatched') === '1'
+	const limit = Math.min(Math.max(Number(c.req.query('limit')) || 60, 1), 200)
+	const offset = Math.max(Number(c.req.query('offset')) || 0, 0)
+
+	const where: string[] = []
+	const args: (string | number)[] = []
+	if (q) (where.push('title LIKE ?'), args.push(`%${q}%`))
+	if (format) (where.push('formats LIKE ?'), args.push(`%${format}%`))
+	if (tmdbId) (where.push('tmdb_id = ?'), args.push(tmdbId))
+	if (unmatched) where.push('tmdb_id IS NULL')
+	const w = where.length ? 'WHERE ' + where.join(' AND ') : ''
+
+	const [rows, count] = await Promise.all([
+		c.env.DB.prepare(
+			`SELECT id, title, year, formats, tmdb_id, tmdb_title, poster_path, match FROM library ${w} ORDER BY title COLLATE NOCASE LIMIT ? OFFSET ?`,
+		)
+			.bind(...args, limit, offset)
+			.all(),
+		c.env.DB.prepare(`SELECT COUNT(*) AS n FROM library ${w}`).bind(...args).first<{ n: number }>(),
+	])
+	return c.json({ results: rows.results, total: count?.n ?? 0 })
+})
+
+// Admin: importer en bunke (maks 20) filmer fra CLZ. Kan kjøres på nytt uten å lage duplikater.
+app.post('/api/admin/library/import', async (c) => {
+	if (!(await isAdmin(c))) return c.json({ error: 'Krever admin' }, 403)
+	const body = await c.req.json<{ items?: any[] }>().catch(() => ({ items: undefined }))
+	const raw = Array.isArray(body.items) ? body.items.slice(0, 20) : []
+
+	const items = raw
+		.map((i) => ({
+			title: String(i?.title ?? '').trim().slice(0, 200),
+			year: Math.min(Math.max(Math.trunc(Number(i?.year)) || 0, 0), 2100),
+			formats: String(i?.formats ?? '').trim().slice(0, 100),
+			genres: String(i?.genres ?? '').slice(0, 200) || null,
+			runtime: Math.trunc(Number(i?.runtime)) || null,
+			director: String(i?.director ?? '').slice(0, 200) || null,
+			distributor: String(i?.distributor ?? '').slice(0, 200) || null,
+			added_date: String(i?.added_date ?? '').slice(0, 30) || null,
+		}))
+		.filter((i) => i.title && i.formats)
+
+	// Hopp over filmer som allerede er matchet (sparer TMDB-oppslag ved ny import)
+	const { results: done } = await c.env.DB.prepare(`SELECT title, year FROM library WHERE tmdb_id IS NOT NULL`).all<{ title: string; year: number }>()
+	const matched = new Set(done.map((r) => `${r.title}\u0000${r.year}`))
+
+	const matches = await Promise.all(
+		items.map((i) =>
+			matched.has(`${i.title}\u0000${i.year}`)
+				? Promise.resolve(null)
+				: matchMovie(c, i.title, i.year),
+		),
+	)
+
+	const stmts = items.map((i, k) => {
+		const m = matches[k] ?? { tmdb_id: null, tmdb_title: null, poster_path: null, match: 'none' as const }
+		return c.env.DB.prepare(
+			`INSERT INTO library (title, year, formats, genres, runtime, director, distributor, added_date, tmdb_id, tmdb_title, poster_path, match)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			 ON CONFLICT (title, year) DO UPDATE SET
+			   formats = excluded.formats, genres = excluded.genres, runtime = excluded.runtime,
+			   director = excluded.director, distributor = excluded.distributor, added_date = excluded.added_date,
+			   tmdb_id = COALESCE(library.tmdb_id, excluded.tmdb_id),
+			   tmdb_title = COALESCE(library.tmdb_title, excluded.tmdb_title),
+			   poster_path = COALESCE(library.poster_path, excluded.poster_path),
+			   match = CASE WHEN library.tmdb_id IS NULL THEN excluded.match ELSE library.match END`,
+		).bind(i.title, i.year, i.formats, i.genres, i.runtime, i.director, i.distributor, i.added_date, m.tmdb_id, m.tmdb_title, m.poster_path, m.match)
+	})
+	if (stmts.length) await c.env.DB.batch(stmts)
+
+	const count = (k: string) => matches.filter((m) => m?.match === k).length
+	return c.json({
+		imported: items.length,
+		exact: count('exact'),
+		fuzzy: count('fuzzy'),
+		none: count('none'),
+		skipped: matches.filter((m) => m === null).length,
+	})
 })
 
 app.notFound((c) => (c.req.path.startsWith('/api/') ? c.json({ error: 'Ikke funnet' }, 404) : c.env.ASSETS.fetch(c.req.raw)))

@@ -170,6 +170,161 @@ async function start() {
 	setTab('search');
 }
 
+/* ---------- Bibliotek (CLZ) ---------- */
+const FORMAT_FILTERS = ['4K UHD', 'Blu-ray', 'DVD', 'Digital'];
+const lib = { q: '', format: '', offset: 0, total: 0, timer: null };
+
+function libBadge(formats) {
+	const list = [...new Set(String(formats ?? '').split('|').map((f) => f.trim()).filter(Boolean))];
+	if (!list.length) return '';
+	return `<div class="mt-2"><span class="inline-block rounded-full bg-emerald-900/60 text-emerald-300 text-xs px-2 py-1">📀 I biblioteket: ${list.map(esc).join(' · ')}</span></div>`;
+}
+
+function renderFormatChips() {
+	$('#lib-formats').innerHTML = ['', ...FORMAT_FILTERS]
+		.map(
+			(f) =>
+				`<button data-f="${esc(f)}" class="rounded-full px-3 py-1 text-xs ${lib.format === f ? 'bg-amber-400 text-slate-900' : 'bg-slate-800 text-slate-300'}">${f || 'Alle'}</button>`,
+		)
+		.join('');
+}
+
+async function loadLibrary(reset) {
+	if (reset) {
+		lib.offset = 0;
+		$('#lib-list').innerHTML = '';
+		renderFormatChips();
+	}
+	$('#lib-status').textContent = 'Henter…';
+	try {
+		const params = new URLSearchParams({ limit: '60', offset: String(lib.offset) });
+		if (lib.q) params.set('q', lib.q);
+		if (lib.format) params.set('format', lib.format);
+		const { results, total } = await api('/api/library?' + params);
+		lib.total = total;
+		lib.offset += results.length;
+		$('#lib-status').textContent = total ? `${total} filmer` : 'Ingen filmer i biblioteket ennå.';
+		$('#lib-list').insertAdjacentHTML(
+			'beforeend',
+			results
+				.map(
+					(m) => `
+			<button ${m.tmdb_id ? `data-movie='${esc(JSON.stringify({ id: m.tmdb_id, title: m.title, year: m.year || null, poster_path: m.poster_path }))}'` : 'disabled'}
+				class="lib-item text-left bg-slate-800 rounded-xl overflow-hidden ${m.tmdb_id ? 'hover:ring-2 hover:ring-amber-400' : 'opacity-70'}">
+				<div class="aspect-[2/3] bg-slate-700">${posterTag(m.poster_path, m.title)}</div>
+				<div class="p-2">
+					<div class="text-sm font-medium leading-tight">${esc(m.title)}</div>
+					<div class="text-xs text-slate-400">${m.year || ''} · ${esc(m.formats.split('|').join(' · '))}</div>
+					${m.match === 'fuzzy' ? '<div class="text-xs text-amber-400">usikker match</div>' : ''}${m.tmdb_id ? '' : '<div class="text-xs text-slate-500">ikke funnet i TMDB</div>'}
+				</div>
+			</button>`,
+				)
+				.join(''),
+		);
+		$('#lib-more').classList.toggle('hidden', lib.offset >= total);
+	} catch (err) {
+		$('#lib-status').textContent = err.message;
+	}
+}
+
+$('#lib-q').addEventListener('input', (e) => {
+	clearTimeout(lib.timer);
+	lib.timer = setTimeout(() => {
+		lib.q = e.target.value.trim();
+		loadLibrary(true);
+	}, 300);
+});
+$('#lib-formats').addEventListener('click', (e) => {
+	const b = e.target.closest('button');
+	if (!b) return;
+	lib.format = b.dataset.f;
+	loadLibrary(true);
+});
+$('#lib-more').addEventListener('click', () => loadLibrary(false));
+$('#lib-list').addEventListener('click', (e) => {
+	const b = e.target.closest('.lib-item[data-movie]');
+	if (b) openMovie(JSON.parse(b.dataset.movie));
+});
+
+/* ---------- Import fra CLZ (admin) ---------- */
+function parseCSV(text) {
+	const rows = [];
+	let row = [], field = '', q = false;
+	for (let i = 0; i < text.length; i++) {
+		const ch = text[i];
+		if (q) {
+			if (ch === '"') {
+				if (text[i + 1] === '"') (field += '"', i++);
+				else q = false;
+			} else field += ch;
+		} else if (ch === '"') q = true;
+		else if (ch === ',') (row.push(field), (field = ''));
+		else if (ch === '\n' || ch === '\r') {
+			if (ch === '\r' && text[i + 1] === '\n') i++;
+			row.push(field);
+			field = '';
+			if (row.some((x) => x !== '')) rows.push(row);
+			row = [];
+		} else field += ch;
+	}
+	if (field !== '' || row.length) (row.push(field), rows.push(row));
+	return rows;
+}
+
+const FORMAT_MAP = { 'blu-ray disc': 'Blu-ray', '4k uhd': '4K UHD', dvd: 'DVD' };
+const normFormat = (f) => FORMAT_MAP[f.trim().toLowerCase()] || (/^files?\b/i.test(f.trim()) ? 'Digital' : f.trim());
+
+function groupClz(rows) {
+	const head = rows[0].map((h) => h.trim());
+	const col = (n) => head.indexOf(n);
+	const c = { t: col('Title'), y: col('Release Date'), g: col('Genres'), r: col('Runtime'), d: col('Director'), f: col('Format'), s: col('Distributor'), a: col('Added Date') };
+	if (c.t < 0 || c.f < 0) throw new Error('Fant ikke kolonnene Title og Format. Er dette en CLZ-eksport?');
+	const map = new Map();
+	for (const r of rows.slice(1)) {
+		const title = (r[c.t] ?? '').trim();
+		if (!title) continue;
+		const year = Number(((r[c.y] ?? '').match(/\d{4}/) || [0])[0]) || 0;
+		const key = `${title}\u0000${year}`;
+		const item = map.get(key) || { title, year, formats: new Set(), genres: r[c.g], runtime: r[c.r], director: r[c.d], dist: new Set(), added_date: r[c.a] };
+		for (const f of (r[c.f] ?? '').split('|')) if (f.trim()) item.formats.add(normFormat(f));
+		if ((r[c.s] ?? '').trim()) item.dist.add(r[c.s].trim());
+		map.set(key, item);
+	}
+	return [...map.values()]
+		.filter((i) => i.formats.size)
+		.map((i) => ({ title: i.title, year: i.year, formats: [...i.formats].sort().join('|'), genres: i.genres, runtime: i.runtime, director: i.director, distributor: [...i.dist].join(' / '), added_date: i.added_date }));
+}
+
+$('#import-clz').addEventListener('click', () => $('#clz-file').click());
+$('#clz-file').addEventListener('change', async (e) => {
+	const file = e.target.files[0];
+	e.target.value = '';
+	if (!file) return;
+	const status = $('#import-status');
+	try {
+		const items = groupClz(parseCSV((await file.text()).replace(/^﻿/, '')));
+		if (!confirm(`Importere ${items.length} filmer fra ${file.name}? Dette tar noen minutter. Ikke lukk siden underveis.`)) return;
+		const tot = { exact: 0, fuzzy: 0, none: 0, skipped: 0 };
+		for (let i = 0; i < items.length; i += 20) {
+			status.textContent = `Importerer ${Math.min(i + 20, items.length)} / ${items.length}…`;
+			const batch = items.slice(i, i + 20);
+			let res;
+			try {
+				res = await api('/api/admin/library/import', { method: 'POST', body: JSON.stringify({ items: batch }) });
+			} catch {
+				res = await api('/api/admin/library/import', { method: 'POST', body: JSON.stringify({ items: batch }) }); // ett nytt forsøk
+			}
+			for (const k of Object.keys(tot)) tot[k] += res[k];
+		}
+		status.textContent = '';
+		alert(`Ferdig: ${items.length} filmer.\nMatchet: ${tot.exact}\nUsikre treff: ${tot.fuzzy}\nIkke funnet i TMDB: ${tot.none}\nAllerede matchet (hoppet over): ${tot.skipped}`);
+		if (!$('#tab-library').classList.contains('hidden')) loadLibrary(true);
+	} catch (err) {
+		status.textContent = '';
+		alert('Import feilet: ' + err.message);
+	}
+});
+
 /* ---------- Faner ---------- */
 function setTab(tab) {
 	document.querySelectorAll('.tab').forEach((b) => {
@@ -180,7 +335,9 @@ function setTab(tab) {
 	});
 	$('#tab-search').classList.toggle('hidden', tab !== 'search');
 	$('#tab-feed').classList.toggle('hidden', tab !== 'feed');
+	$('#tab-library').classList.toggle('hidden', tab !== 'library');
 	if (tab === 'feed') loadFeed();
+	if (tab === 'library') loadLibrary(true);
 }
 document.querySelectorAll('.tab').forEach((b) => b.addEventListener('click', () => setTab(b.dataset.tab)));
 
@@ -247,6 +404,7 @@ async function loadFeed() {
 						<div class="font-semibold">${esc(r.title)}</div>
 						<div class="text-sm text-amber-300">${dice(r.rating)} <span class="text-slate-400">· ${esc(r.username)} · ${fmtDate(r.created_at)}</span></div>
 						${r.comment ? `<p class="text-sm text-slate-300 mt-1 break-words">${esc(r.comment)}</p>` : ''}
+						${libBadge(r.library_formats)}
 					</div>
 				</button>
 				${r.username === me || isAdmin ? `<button data-feed-del="${r.id}" class="absolute top-3 right-3 text-xs text-red-400 hover:underline">Slett</button>` : ''}
@@ -307,6 +465,7 @@ async function openMovie(movie) {
 			<div class="min-w-0">
 				<h2 class="text-xl font-bold leading-tight">${esc(movie.title)}</h2>
 				<div class="text-slate-400 text-sm">${esc(movie.year ?? '')}</div>
+				<div id="lib-badge"></div>
 				${movie.overview ? `<p class="text-sm text-slate-300 mt-2 line-clamp-6">${esc(movie.overview)}</p>` : ''}
 			</div>
 		</div>
@@ -344,7 +503,13 @@ async function openMovie(movie) {
 		}
 	});
 
-	// Strømmetjenester + eksisterende anbefalinger parallelt
+	// Strømmetjenester + eksisterende anbefalinger + bibliotek parallelt
+	api(`/api/library?tmdb_id=${movie.id}`)
+		.then(({ results }) => {
+			const el = $('#lib-badge');
+			if (el) el.innerHTML = libBadge(results.map((r) => r.formats).join('|'));
+		})
+		.catch(() => {});
 	const [prov, recs] = await Promise.allSettled([
 		api(`/api/movie/${movie.id}/providers`),
 		api(`/api/recommendations?tmdb_id=${movie.id}`),

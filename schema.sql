@@ -24,3 +24,23 @@ CREATE TABLE IF NOT EXISTS user_pins (
   locked_until    TEXT,
   created_at      TEXT    NOT NULL DEFAULT (datetime('now'))
 );
+
+-- Bibliotek importert fra CLZ Movies (egne filmer, adskilt fra anbefalinger)
+CREATE TABLE IF NOT EXISTS library (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  title       TEXT    NOT NULL,
+  year        INTEGER NOT NULL DEFAULT 0,
+  formats     TEXT    NOT NULL,            -- f.eks. '4K UHD|Blu-ray'
+  genres      TEXT,
+  runtime     INTEGER,
+  director    TEXT,
+  distributor TEXT,
+  added_date  TEXT,
+  tmdb_id     INTEGER,                     -- NULL = ikke matchet mot TMDB ennå
+  tmdb_title  TEXT,
+  poster_path TEXT,
+  match       TEXT    NOT NULL DEFAULT 'none' CHECK (match IN ('exact', 'fuzzy', 'none')),
+  UNIQUE (title, year)
+);
+CREATE INDEX IF NOT EXISTS idx_library_tmdb ON library (tmdb_id);
+CREATE INDEX IF NOT EXISTS idx_library_title ON library (title COLLATE NOCASE);

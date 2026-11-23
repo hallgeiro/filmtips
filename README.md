@@ -42,6 +42,8 @@ Alle `/api/*`-ruter unntatt `/api/login` krever innloggingscookie.
 | `POST /api/recommendations` | lagre/oppdater (én per person per film) |
 | `DELETE /api/recommendations/:id?username=` | slett egen anbefaling (admin kan slette alle) |
 | `POST /api/identity` | `{username, pin}` velger navn. Første gang opprettes PIN-en, deretter må den oppgis |
+| `GET /api/library[?q=&format=&tmdb_id=]` | bibliotek (importert fra CLZ), adskilt fra anbefalinger |
+| `POST /api/admin/library/import` | (admin) importerer opptil 20 filmer om gangen, matcher mot TMDB |
 | `POST /api/admin/reset-pin` | `{username}` (admin) fjerner PIN slik at den kan lages på nytt |
 | `POST /api/admin/login` / `logout` | `{password}` mot `ADMIN_PASSWORD` gir admin-cookie |
 
@@ -51,3 +53,4 @@ Alle `/api/*`-ruter unntatt `/api/login` krever innloggingscookie.
 - PIN: hver bruker lager en PIN (4–6 siffer) første gang de velger navnet sitt. PIN lagres som PBKDF2-hash i tabellen `user_pins`, med lås i 15 minutter etter 5 feil forsøk. Uten admin kan man bare anbefale og slette som navnet man har logget inn som. Glemt PIN: admin trykker «Nullstill PIN». Kjør `npm run db:setup:remote` (eller kjør `schema.sql` mot D1) når tabellen `user_pins` mangler.
 - Sikkerheten er bevisst enkel (felles passord, tillitsbasert navnevalg), tilpasset familie og venner.
 - TMDB krever attribusjon. Strømdata kommer fra JustWatch. Begge er kreditert i bunnteksten.
+- Bibliotek: som admin trykker du «Importer CLZ-CSV…» og velger eksportfilen fra CLZ Movies (kolonnene Title og Format kreves). Filmer matches mot TMDB på tittel og år, og samme film i flere formater slås sammen. Importen kan kjøres på nytt uten duplikater. Anbefalte filmer som finnes i biblioteket merkes med formatet.
