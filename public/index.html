@@ -41,9 +41,10 @@
 	</div>
 
 	<nav class="flex gap-2 mb-4" role="tablist">
-			<button data-tab="search" class="tab flex-1 rounded-lg py-2 text-sm font-medium">🔍 Søk</button>
-			<button data-tab="feed" class="tab flex-1 rounded-lg py-2 text-sm font-medium">⭐ Anbefalinger</button>
-			<button data-tab="library" class="tab flex-1 rounded-lg py-2 text-sm font-medium">📀 Bibliotek</button>
+			<button data-tab="search" class="tab flex-1 rounded-lg py-2 px-1 text-xs sm:text-sm font-medium">🔍 Søk</button>
+			<button data-tab="feed" class="tab flex-1 rounded-lg py-2 px-1 text-xs sm:text-sm font-medium">⭐ Anbefalinger</button>
+			<button data-tab="library" class="tab flex-1 rounded-lg py-2 px-1 text-xs sm:text-sm font-medium">📀 Bibliotek</button>
+			<button data-tab="nights" class="tab flex-1 rounded-lg py-2 px-1 text-xs sm:text-sm font-medium">🎬 Filmkveld</button>
 		</nav>
 
 		<section id="tab-search">
@@ -71,6 +72,30 @@
 			<p id="lib-status" class="text-slate-400 text-sm mt-3"></p>
 			<div id="lib-list" class="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-3"></div>
 			<button id="lib-more" class="hidden mt-4 w-full rounded-lg bg-slate-800 py-3 text-sm hover:bg-slate-700">Vis flere</button>
+		</section>
+
+		<section id="tab-nights" class="hidden">
+			<div id="nights-list-view">
+				<form id="night-form" class="hidden bg-slate-800 rounded-xl p-3 mb-4 space-y-2">
+					<div class="text-sm font-semibold">Ny filmkveld</div>
+					<input id="night-title" maxlength="100" placeholder="Tittel, f.eks. Fredagskveld" class="w-full rounded-lg bg-slate-900 px-3 py-2 text-base" />
+					<input id="night-date" type="date" class="w-full rounded-lg bg-slate-900 px-3 py-2 text-base" />
+					<input id="night-note" maxlength="500" placeholder="Notat (valgfritt), f.eks. tid og sted" class="w-full rounded-lg bg-slate-900 px-3 py-2 text-base" />
+					<button class="w-full rounded-lg bg-amber-400 text-slate-900 font-semibold py-2">Opprett filmkveld</button>
+				</form>
+				<p id="nights-status" class="text-slate-400 text-sm mb-2"></p>
+				<div id="nights-list" class="space-y-2"></div>
+			</div>
+			<div id="night-view" class="hidden">
+				<button id="night-back" class="text-sm text-slate-400 hover:text-white mb-3">← Alle filmkvelder</button>
+				<div id="night-head"></div>
+				<div id="night-add" class="hidden mt-4">
+					<input id="night-q" type="search" autocomplete="off" placeholder="Søk etter en film du ønsker å se…" class="w-full rounded-lg bg-slate-800 px-3 py-2 text-base" />
+					<div id="night-results" class="mt-2 space-y-2"></div>
+				</div>
+				<h3 class="font-semibold mt-5 mb-2">Ønsker</h3>
+				<div id="night-wishes" class="space-y-2"></div>
+			</div>
 		</section>
 
 		<section id="tab-feed" class="hidden">

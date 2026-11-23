@@ -352,6 +352,164 @@ app.delete('/api/recommendations/:id', async (c) => {
 	return c.json({ ok: true, deleted: res.meta.changes })
 })
 
+/* ---------- Filmkveld ---------- */
+
+const MAX_WISHES = 3 // ønsker per person per kveld
+
+// Navnet man handler som: uten admin må det være ens egen bekreftede identitet
+async function actAs(c: Ctx, name: unknown): Promise<{ user: string } | { error: string; status: 400 | 403 }> {
+	const user = String(name ?? '').trim()
+	if (!getUsers(c.env).includes(user)) return { error: 'Ukjent navn', status: 400 }
+	if (!(await isAdmin(c))) {
+		const me = await getIdentity(c)
+		if (!me) return { error: 'Velg navnet ditt først', status: 403 }
+		if (user !== me) return { error: `Du kan bare handle som ${me}`, status: 403 }
+	}
+	return { user }
+}
+
+app.get('/api/nights', async (c) => {
+	const { results } = await c.env.DB.prepare(
+		`SELECT n.*, (SELECT COUNT(*) FROM wishes w WHERE w.night_id = n.id) AS wish_count,
+		        (SELECT w.title FROM wishes w WHERE w.id = n.winner_wish_id) AS winner_title
+		 FROM movie_nights n
+		 ORDER BY (n.status = 'open') DESC, CASE WHEN n.status = 'open' THEN n.date END ASC, n.date DESC`,
+	).all()
+	return c.json({ results })
+})
+
+app.get('/api/nights/:id', async (c) => {
+	const id = Number(c.req.param('id'))
+	const night = await c.env.DB.prepare(`SELECT * FROM movie_nights WHERE id = ?`).bind(id).first()
+	if (!night) return c.json({ error: 'Fant ikke filmkvelden' }, 404)
+	const { results } = await c.env.DB.prepare(
+		`SELECT w.*, (SELECT group_concat(v.username, '|') FROM wish_votes v WHERE v.wish_id = w.id) AS voters,
+		        (SELECT group_concat(l.formats, '|') FROM library l WHERE l.tmdb_id = w.tmdb_id AND l.media_type = 'movie') AS library_formats
+		 FROM wishes w WHERE w.night_id = ?`,
+	)
+		.bind(id)
+		.all<any>()
+	const wishes = results
+		.map((w) => ({ ...w, voters: w.voters ? String(w.voters).split('|') : [] }))
+		.sort((a, b) => b.voters.length - a.voters.length || a.id - b.id)
+	return c.json({ night, wishes, max_wishes: MAX_WISHES })
+})
+
+// Admin: opprett, endre (velg vinner / åpne igjen) og slett filmkvelder
+app.post('/api/admin/nights', async (c) => {
+	if (!(await isAdmin(c))) return c.json({ error: 'Krever admin' }, 403)
+	const b = await c.req.json<any>().catch(() => null)
+	const title = String(b?.title ?? '').trim()
+	const date = String(b?.date ?? '').trim()
+	const note = String(b?.note ?? '').trim()
+	if (!title || title.length > 100) return c.json({ error: 'Gi kvelden en tittel (maks 100 tegn)' }, 400)
+	if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return c.json({ error: 'Velg en dato' }, 400)
+	if (note.length > 500) return c.json({ error: 'Notatet er for langt (maks 500 tegn)' }, 400)
+	const res = await c.env.DB.prepare(`INSERT INTO movie_nights (title, date, note) VALUES (?, ?, ?)`).bind(title, date, note || null).run()
+	return c.json({ ok: true, id: res.meta.last_row_id }, 201)
+})
+
+app.patch('/api/admin/nights/:id', async (c) => {
+	if (!(await isAdmin(c))) return c.json({ error: 'Krever admin' }, 403)
+	const id = Number(c.req.param('id'))
+	const b = await c.req.json<{ winner_wish_id?: number | null }>().catch(() => ({} as { winner_wish_id?: number | null }))
+	if (b.winner_wish_id === null) {
+		await c.env.DB.prepare(`UPDATE movie_nights SET winner_wish_id = NULL, status = 'open' WHERE id = ?`).bind(id).run()
+		return c.json({ ok: true })
+	}
+	const wid = Number(b.winner_wish_id)
+	const wish = await c.env.DB.prepare(`SELECT id FROM wishes WHERE id = ? AND night_id = ?`).bind(wid, id).first()
+	if (!wish) return c.json({ error: 'Ønsket hører ikke til denne kvelden' }, 400)
+	await c.env.DB.prepare(`UPDATE movie_nights SET winner_wish_id = ?, status = 'closed' WHERE id = ?`).bind(wid, id).run()
+	return c.json({ ok: true })
+})
+
+app.delete('/api/admin/nights/:id', async (c) => {
+	if (!(await isAdmin(c))) return c.json({ error: 'Krever admin' }, 403)
+	const id = Number(c.req.param('id'))
+	await c.env.DB.batch([
+		c.env.DB.prepare(`DELETE FROM wish_votes WHERE wish_id IN (SELECT id FROM wishes WHERE night_id = ?)`).bind(id),
+		c.env.DB.prepare(`DELETE FROM wishes WHERE night_id = ?`).bind(id),
+		c.env.DB.prepare(`DELETE FROM movie_nights WHERE id = ?`).bind(id),
+	])
+	return c.json({ ok: true })
+})
+
+// Legg inn et ønske (en film) på en åpen filmkveld. Ønsket får automatisk din stemme.
+app.post('/api/nights/:id/wishes', async (c) => {
+	const nightId = Number(c.req.param('id'))
+	const b = await c.req.json<any>().catch(() => null)
+	if (!b) return c.json({ error: 'Ugyldig JSON' }, 400)
+	const tmdbId = Number(b.tmdb_id)
+	const title = String(b.title ?? '').trim()
+	const year = Number(b.year) || null
+	const comment = String(b.comment ?? '').trim()
+	const poster = typeof b.poster_path === 'string' && /^\/[\w.-]+$/.test(b.poster_path) ? b.poster_path : null
+	if (!Number.isInteger(tmdbId) || tmdbId <= 0 || !title || title.length > 200) return c.json({ error: 'Ugyldig film' }, 400)
+	if (comment.length > 300) return c.json({ error: 'Kommentaren er for lang (maks 300 tegn)' }, 400)
+	const who = await actAs(c, b.username)
+	if ('error' in who) return c.json({ error: who.error }, who.status)
+
+	const night = await c.env.DB.prepare(`SELECT status FROM movie_nights WHERE id = ?`).bind(nightId).first<{ status: string }>()
+	if (!night) return c.json({ error: 'Fant ikke filmkvelden' }, 404)
+	if (night.status !== 'open') return c.json({ error: 'Denne kvelden er avsluttet' }, 409)
+	const dup = await c.env.DB.prepare(`SELECT id FROM wishes WHERE night_id = ? AND tmdb_id = ?`).bind(nightId, tmdbId).first()
+	if (dup) return c.json({ error: 'Denne filmen er allerede ønsket. Gi den en stemme i stedet.' }, 409)
+	const mine = await c.env.DB.prepare(`SELECT COUNT(*) AS n FROM wishes WHERE night_id = ? AND username = ?`).bind(nightId, who.user).first<{ n: number }>()
+	if ((mine?.n ?? 0) >= MAX_WISHES) return c.json({ error: `Maks ${MAX_WISHES} ønsker per person. Slett et for å legge til et nytt.` }, 409)
+
+	await c.env.DB.batch([
+		c.env.DB.prepare(`INSERT INTO wishes (night_id, tmdb_id, title, year, poster_path, username, comment) VALUES (?, ?, ?, ?, ?, ?, ?)`).bind(
+			nightId,
+			tmdbId,
+			title,
+			year,
+			poster,
+			who.user,
+			comment || null,
+		),
+		c.env.DB.prepare(`INSERT OR IGNORE INTO wish_votes (wish_id, username) SELECT id, ? FROM wishes WHERE night_id = ? AND tmdb_id = ?`).bind(
+			who.user,
+			nightId,
+			tmdbId,
+		),
+	])
+	return c.json({ ok: true }, 201)
+})
+
+// Admin kan slette alle ønsker. Andre bare egne.
+app.delete('/api/wishes/:id', async (c) => {
+	const id = Number(c.req.param('id'))
+	const wish = await c.env.DB.prepare(`SELECT id, username FROM wishes WHERE id = ?`).bind(id).first<{ id: number; username: string }>()
+	if (!wish) return c.json({ ok: true, deleted: 0 })
+	if (!(await isAdmin(c))) {
+		const me = await getIdentity(c)
+		if (!me) return c.json({ error: 'Velg navnet ditt først' }, 403)
+		if (wish.username !== me) return c.json({ error: 'Du kan bare slette dine egne ønsker' }, 403)
+	}
+	await c.env.DB.batch([
+		c.env.DB.prepare(`UPDATE movie_nights SET winner_wish_id = NULL, status = 'open' WHERE winner_wish_id = ?`).bind(id),
+		c.env.DB.prepare(`DELETE FROM wish_votes WHERE wish_id = ?`).bind(id),
+		c.env.DB.prepare(`DELETE FROM wishes WHERE id = ?`).bind(id),
+	])
+	return c.json({ ok: true, deleted: 1 })
+})
+
+// Gi eller ta tilbake stemmen din på et ønske
+app.post('/api/wishes/:id/vote', async (c) => {
+	const id = Number(c.req.param('id'))
+	const b = await c.req.json<any>().catch(() => null)
+	const who = await actAs(c, b?.username)
+	if ('error' in who) return c.json({ error: who.error }, who.status)
+	const row = await c.env.DB.prepare(`SELECT n.status FROM wishes w JOIN movie_nights n ON n.id = w.night_id WHERE w.id = ?`).bind(id).first<{ status: string }>()
+	if (!row) return c.json({ error: 'Fant ikke ønsket' }, 404)
+	if (row.status !== 'open') return c.json({ error: 'Denne kvelden er avsluttet' }, 409)
+	const del = await c.env.DB.prepare(`DELETE FROM wish_votes WHERE wish_id = ? AND username = ?`).bind(id, who.user).run()
+	if (del.meta.changes) return c.json({ ok: true, voted: false })
+	await c.env.DB.prepare(`INSERT INTO wish_votes (wish_id, username) VALUES (?, ?)`).bind(id, who.user).run()
+	return c.json({ ok: true, voted: true })
+})
+
 /* ---------- Bibliotek (importert fra CLZ Movies) ---------- */
 
 const norm = (s: string) =>

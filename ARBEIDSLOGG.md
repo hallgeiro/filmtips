@@ -18,7 +18,7 @@ Sammendrag av oppsett, arkitektur og utviklingsarbeid. Filmtips er en ikke-komme
 | Fil | Innhold |
 | --- | --- |
 | `wrangler.jsonc` | Worker-konfig, D1-binding, assets (`run_worker_first: ["/api/*"]`), custom domain, `USERS` |
-| `schema.sql` | Tabellene `recommendations`, `user_pins`, `library` (inkl. `media_type`, `collection`) + indekser |
+| `schema.sql` | Tabellene `recommendations`, `user_pins`, `library` (inkl. `media_type`, `collection`), `movie_nights`, `wishes`, `wish_votes` + indekser |
 | `ARBEIDSLOGG.md` | Denne filen: struktur, arbeidsmåte og status |
 | `src/index.ts` | Hele backend (Hono): auth, TMDB-søk, anbefalinger, bibliotek, admin |
 | `public/index.html` | UI: login, faner (Søk / Anbefalinger / Bibliotek), modaler |
@@ -48,6 +48,7 @@ Sammendrag av oppsett, arkitektur og utviklingsarbeid. Filmtips er en ikke-komme
   2. Treffet godtas som sikkert bare hvis utgivelsesår (±2) og regissør fra CLZ stemmer. Mangler regissør, kreves lik tittel og nøyaktig samme år (usikkert treff).
   3. Vanlig tittelmatching (film, så TV), deretter OMDb (IMDb-kode → TMDB), deretter Wikidata (titler på mange språk → IMDb-kode → TMDB). Treff fra disse er alltid «usikre».
   4. Bokssett og samlinger («Collection», «Trilogy», «3 Films» osv.) merkes `collection = 1` og vises som «Samling», ikke som feil.
+- **Filmkveld:** admin oppretter en kveld (tittel, dato, notat). Alle brukere legger inn ønsker via TMDB-søk (maks 3 per person per kveld, filmer fra biblioteket merkes med format) og kan gi 👍 til andres ønsker. Ønsket får forslagsstillerens stemme automatisk. Admin velger vinner, som avslutter kvelden (kan åpnes igjen). Uten admin kan man bare ønske og stemme som seg selv, og slette egne ønsker. Tabeller: `movie_nights`, `wishes`, `wish_votes`.
 - **Filmvinduet på mobil:** lukkeknappen (×) ligger utenfor det rullbare området og er alltid synlig. Vinduet starter alltid øverst og bruker `dvh`.
 
 ## Viktige API-ruter
@@ -73,6 +74,8 @@ Sammendrag av oppsett, arkitektur og utviklingsarbeid. Filmtips er en ikke-komme
 8. Arbeidslogg (denne filen) og OMDb som reserve (`OMDB_API_KEY` satt som secret).
 9. Kryssjekk: regissør- og årskontroll, alternative titler, Wikidata og «Samling»-merking. Status etter første kjøring: ca. 30 titler gjenstår å rette manuelt.
 10. Mobil-rettelser i filmvinduet (lukkeknapp, scrollposisjon). En feil underveis fjernet midlertidig alle dialoger fra `index.html`. Den ble rettet umiddelbart (commit `88a6ee6`).
+
+11. Filmkveld: ønsker og avstemning (tabeller opprettet i remote D1 før koden ble pushet).
 
 ## Kjente begrensninger og mulige neste steg
 

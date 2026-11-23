@@ -70,6 +70,7 @@ $('#admin').addEventListener('click', async () => {
 		}
 		await refreshConfig();
 		if (!$('#tab-feed').classList.contains('hidden')) loadFeed();
+		if (!$('#tab-nights').classList.contains('hidden')) loadNights();
 		if (!$('#tab-library').classList.contains('hidden')) loadLibrary(true);
 	} catch (err) {
 		alert(err.message);
@@ -715,6 +716,8 @@ function setTab(tab) {
 	$('#tab-search').classList.toggle('hidden', tab !== 'search');
 	$('#tab-feed').classList.toggle('hidden', tab !== 'feed');
 	$('#tab-library').classList.toggle('hidden', tab !== 'library');
+	$('#tab-nights').classList.toggle('hidden', tab !== 'nights');
+	if (tab === 'nights') loadNights();
 	if (tab === 'feed') loadFeed();
 	if (tab === 'library') loadLibrary(true);
 }
@@ -945,6 +948,7 @@ async function openMovie(movie) {
 		await api(`/api/recommendations/${id}?username=${encodeURIComponent(me)}`, { method: 'DELETE' });
 		openMovie(movie);
 		if (!$('#tab-feed').classList.contains('hidden')) loadFeed();
+		if (!$('#tab-nights').classList.contains('hidden')) loadNights();
 	});
 
 	$('#rec-form')?.addEventListener('submit', async (e) => {
@@ -978,3 +982,194 @@ async function openMovie(movie) {
 }
 
 start();
+
+/* ---------- Filmkveld ---------- */
+let nightId = null;
+let nightTimer;
+const nightDate = (d) => {
+	const s = new Date(d + 'T12:00:00').toLocaleDateString('nb-NO', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+	return s.charAt(0).toUpperCase() + s.slice(1);
+};
+
+async function loadNights() {
+	$('#night-form').classList.toggle('hidden', !isAdmin);
+	if (nightId) return openNight(nightId);
+	$('#nights-list-view').classList.remove('hidden');
+	$('#night-view').classList.add('hidden');
+	$('#nights-status').textContent = 'Henter…';
+	try {
+		const { results } = await api('/api/nights');
+		$('#nights-status').textContent = results.length ? '' : isAdmin ? 'Ingen filmkvelder ennå. Opprett den første over.' : 'Ingen filmkvelder ennå.';
+		$('#nights-list').innerHTML = results
+			.map(
+				(n) => `
+			<button data-night="${n.id}" class="w-full text-left bg-slate-800 rounded-xl p-3 hover:ring-2 hover:ring-amber-400 ${n.status === 'open' ? '' : 'opacity-70'}">
+				<div class="font-semibold">${esc(n.title)}</div>
+				<div class="text-sm text-slate-400">${esc(nightDate(n.date))}</div>
+				<div class="text-xs mt-1 ${n.status === 'open' ? 'text-emerald-300' : 'text-amber-300'}">
+					${n.status === 'open' ? `Åpen · ${n.wish_count} ønske${n.wish_count === 1 ? '' : 'r'}` : `🏆 ${esc(n.winner_title || 'Avsluttet')}`}
+				</div>
+			</button>`,
+			)
+			.join('');
+	} catch (err) {
+		$('#nights-status').textContent = err.message;
+	}
+}
+
+$('#nights-list').addEventListener('click', (e) => {
+	const b = e.target.closest('[data-night]');
+	if (b) openNight(Number(b.dataset.night));
+});
+
+$('#night-form').addEventListener('submit', async (e) => {
+	e.preventDefault();
+	try {
+		const r = await api('/api/admin/nights', {
+			method: 'POST',
+			body: JSON.stringify({ title: $('#night-title').value, date: $('#night-date').value, note: $('#night-note').value }),
+		});
+		$('#night-title').value = '';
+		$('#night-note').value = '';
+		openNight(r.id);
+	} catch (err) {
+		alert(err.message);
+	}
+});
+
+$('#night-back').addEventListener('click', () => {
+	nightId = null;
+	loadNights();
+});
+
+async function openNight(id) {
+	nightId = id;
+	$('#nights-list-view').classList.add('hidden');
+	$('#night-view').classList.remove('hidden');
+	try {
+		const { night, wishes, max_wishes } = await api(`/api/nights/${id}`);
+		const open = night.status === 'open';
+		const winner = wishes.find((w) => w.id === night.winner_wish_id);
+		$('#night-head').innerHTML = `
+			<h2 class="text-xl font-bold">${esc(night.title)}</h2>
+			<div class="text-slate-400 text-sm">${esc(nightDate(night.date))}</div>
+			${night.note ? `<p class="text-sm text-slate-300 mt-1 break-words">${esc(night.note)}</p>` : ''}
+			${winner ? `<div class="mt-3 rounded-xl bg-amber-400/15 text-amber-300 p-3 text-sm">🏆 Vi ser: <b>${esc(winner.title)}</b>${winner.year ? ` (${winner.year})` : ''}</div>` : ''}
+			${!open && !winner ? '<div class="mt-3 text-sm text-slate-400">Kvelden er avsluttet.</div>' : ''}
+			${isAdmin ? `<div class="mt-2 flex gap-3 text-xs">${!open ? '<button data-night-reopen class="underline text-slate-300">Åpne igjen</button>' : ''}<button data-night-del class="underline text-red-400">Slett kveld</button></div>` : ''}`;
+		$('#night-add').classList.toggle('hidden', !open);
+		const mineCount = wishes.filter((w) => w.username === me).length;
+		$('#night-q').placeholder = me ? `Søk etter en film du ønsker å se… (${mineCount}/${max_wishes} brukt)` : 'Velg navnet ditt øverst for å legge inn ønsker';
+		$('#night-wishes').innerHTML = wishes.length
+			? wishes
+					.map((w) => {
+						const voted = w.voters.includes(me);
+						const isWinner = w.id === night.winner_wish_id;
+						return `
+			<div class="bg-slate-800 rounded-xl p-3 flex gap-3 ${isWinner ? 'ring-2 ring-amber-400' : ''}">
+				<button data-movie='${esc(JSON.stringify({ id: w.tmdb_id, title: w.title, year: w.year, poster_path: w.poster_path }))}' class="night-movie w-14 shrink-0 aspect-[2/3] bg-slate-700 rounded overflow-hidden">${posterTag(w.poster_path, w.title, 'w154')}</button>
+				<div class="min-w-0 flex-1">
+					<div class="font-semibold leading-tight">${esc(w.title)} <span class="text-slate-400 font-normal text-sm">${w.year || ''}</span></div>
+					<div class="text-xs text-slate-400">Ønsket av ${esc(w.username)}${w.voters.length ? ` · 👍 ${w.voters.map(esc).join(', ')}` : ''}</div>
+					${w.comment ? `<p class="text-sm text-slate-300 mt-1 break-words">${esc(w.comment)}</p>` : ''}
+					${libBadge(w.library_formats)}
+					<div class="mt-2 flex items-center gap-3 text-sm">
+						${open ? `<button data-vote="${w.id}" class="rounded-full px-3 py-1 ${voted ? 'bg-amber-400 text-slate-900 font-semibold' : 'bg-slate-700'}">👍 ${w.voters.length}</button>` : `<span class="text-slate-400">👍 ${w.voters.length}</span>`}
+						${isAdmin && open ? `<button data-pick-winner="${w.id}" class="text-amber-300 underline text-xs">Velg som vinner</button>` : ''}
+						${open && (isAdmin || w.username === me) ? `<button data-wish-del="${w.id}" class="text-red-400 underline text-xs ml-auto">Slett</button>` : ''}
+					</div>
+				</div>
+			</div>`;
+					})
+					.join('')
+			: '<p class="text-sm text-slate-400">Ingen ønsker ennå. Søk opp en film over og bli den første!</p>';
+	} catch (err) {
+		alert(err.message);
+		nightId = null;
+		loadNights();
+	}
+}
+
+$('#night-head').addEventListener('click', async (e) => {
+	try {
+		if (e.target.closest('[data-night-del]')) {
+			if (!confirm('Slette hele filmkvelden med alle ønsker og stemmer?')) return;
+			await api(`/api/admin/nights/${nightId}`, { method: 'DELETE' });
+			nightId = null;
+			loadNights();
+		} else if (e.target.closest('[data-night-reopen]')) {
+			await api(`/api/admin/nights/${nightId}`, { method: 'PATCH', body: JSON.stringify({ winner_wish_id: null }) });
+			openNight(nightId);
+		}
+	} catch (err) {
+		alert(err.message);
+	}
+});
+
+$('#night-wishes').addEventListener('click', async (e) => {
+	const movie = e.target.closest('.night-movie');
+	if (movie) return openMovie(JSON.parse(movie.dataset.movie));
+	try {
+		const vote = e.target.closest('[data-vote]');
+		const pick = e.target.closest('[data-pick-winner]');
+		const del = e.target.closest('[data-wish-del]');
+		if (vote) {
+			if (!me) return alert('Velg navnet ditt først.');
+			await api(`/api/wishes/${vote.dataset.vote}/vote`, { method: 'POST', body: JSON.stringify({ username: me }) });
+		} else if (pick) {
+			if (!confirm('Velge denne filmen som vinner og avslutte avstemningen?')) return;
+			await api(`/api/admin/nights/${nightId}`, { method: 'PATCH', body: JSON.stringify({ winner_wish_id: Number(pick.dataset.pickWinner) }) });
+		} else if (del) {
+			if (!confirm('Slette dette ønsket?')) return;
+			await api(`/api/wishes/${del.dataset.wishDel}`, { method: 'DELETE' });
+		} else return;
+		openNight(nightId);
+	} catch (err) {
+		alert(err.message);
+	}
+});
+
+$('#night-q').addEventListener('input', (e) => {
+	clearTimeout(nightTimer);
+	const q = e.target.value.trim();
+	if (q.length < 2) {
+		$('#night-results').innerHTML = '';
+		return;
+	}
+	nightTimer = setTimeout(async () => {
+		try {
+			const { results } = await api('/api/search?q=' + encodeURIComponent(q));
+			$('#night-results').innerHTML = results.length
+				? results
+						.slice(0, 8)
+						.map(
+							(m) => `
+				<div class="flex items-center gap-3 bg-slate-800 rounded-xl p-2">
+					<div class="w-10 shrink-0 aspect-[2/3] bg-slate-700 rounded overflow-hidden">${posterTag(m.poster_path, m.title, 'w92')}</div>
+					<div class="min-w-0 flex-1"><div class="text-sm font-medium leading-tight">${esc(m.title)}</div><div class="text-xs text-slate-400">${esc(m.year ?? '')}</div></div>
+					<button data-wish='${esc(JSON.stringify({ tmdb_id: m.id, title: m.title, year: m.year, poster_path: m.poster_path }))}' class="shrink-0 rounded-full bg-amber-400 text-slate-900 text-sm font-semibold px-3 py-1">＋ Ønsk</button>
+				</div>`,
+						)
+						.join('')
+				: '<p class="text-sm text-slate-400">Ingen treff.</p>';
+		} catch (err) {
+			$('#night-results').innerHTML = `<p class="text-sm text-red-400">${esc(err.message)}</p>`;
+		}
+	}, 350);
+});
+
+$('#night-results').addEventListener('click', async (e) => {
+	const b = e.target.closest('[data-wish]');
+	if (!b) return;
+	if (!me) return alert('Velg navnet ditt først.');
+	b.disabled = true;
+	try {
+		await api(`/api/nights/${nightId}/wishes`, { method: 'POST', body: JSON.stringify({ ...JSON.parse(b.dataset.wish), username: me }) });
+		$('#night-q').value = '';
+		$('#night-results').innerHTML = '';
+		openNight(nightId);
+	} catch (err) {
+		b.disabled = false;
+		alert(err.message);
+	}
+});

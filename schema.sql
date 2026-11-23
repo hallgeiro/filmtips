@@ -50,3 +50,32 @@ CREATE INDEX IF NOT EXISTS idx_library_tmdb ON library (tmdb_id);
 CREATE INDEX IF NOT EXISTS idx_library_title ON library (title COLLATE NOCASE);
 CREATE INDEX IF NOT EXISTS idx_library_barcode ON library (barcode);
 -- Eksisterende database uten kolonnene: ALTER TABLE library ADD COLUMN barcode TEXT; ALTER TABLE library ADD COLUMN director_sort TEXT; ALTER TABLE library ADD COLUMN media_type TEXT NOT NULL DEFAULT 'movie'; ALTER TABLE library ADD COLUMN collection INTEGER NOT NULL DEFAULT 0;
+
+-- Filmkveld: admin oppretter kvelder, brukerne legger inn ønsker og stemmer
+CREATE TABLE IF NOT EXISTS movie_nights (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  title          TEXT    NOT NULL,
+  date           TEXT    NOT NULL,                       -- YYYY-MM-DD
+  note           TEXT,
+  status         TEXT    NOT NULL DEFAULT 'open' CHECK (status IN ('open','closed')),
+  winner_wish_id INTEGER,
+  created_at     TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS wishes (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  night_id    INTEGER NOT NULL,
+  tmdb_id     INTEGER NOT NULL,
+  title       TEXT    NOT NULL,
+  year        INTEGER,
+  poster_path TEXT,
+  username    TEXT    NOT NULL,
+  comment     TEXT,
+  created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (night_id, tmdb_id)
+);
+CREATE TABLE IF NOT EXISTS wish_votes (
+  wish_id  INTEGER NOT NULL,
+  username TEXT    NOT NULL,
+  PRIMARY KEY (wish_id, username)
+);
+CREATE INDEX IF NOT EXISTS idx_wishes_night ON wishes(night_id);
