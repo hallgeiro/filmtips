@@ -9,7 +9,7 @@ Sammendrag av oppsett, arkitektur og utviklingsarbeid. Filmtips er en ikke-komme
 - **Domene:** `filmtips.hallgeirolsen.com` (custom domain via `routes` i `wrangler.jsonc`).
 - **Database:** Cloudflare D1 `filmtips` (binding `DB`).
 - **Stack:** Cloudflare Workers + statiske assets, Hono (TypeScript), D1 (SQLite), vanilla JS + Tailwind CDN.
-- **Secrets** (Settings → *Runtime* variables and secrets, ikke Build-seksjonen): `APP_PASSWORD`, `TMDB_API_KEY`, `ADMIN_PASSWORD`, og valgfritt `OMDB_API_KEY` (gratis, 1000 oppslag/dag). Secrets skal aldri inn i koden, siden repoet er public.
+- **Secrets** (Settings → *Runtime* variables and secrets, ikke Build-seksjonen): `APP_PASSWORD` (bare signeringsnøkkel for cookies, ikke et innloggingspassord), `TMDB_API_KEY`, `ADMIN_PASSWORD`, og valgfritt `OMDB_API_KEY` (gratis, 1000 oppslag/dag). Secrets skal aldri inn i koden, siden repoet er public.
 - **Variabel:** `USERS` i `wrangler.jsonc` (`Hallgeir,Eirik,Daniel`). Nye brukere legges til der og pushes.
 - **Free plan:** maks 50 subrequests per request. Derfor små TMDB-batcher (8 titler) og `db.batch` mot D1.
 
@@ -28,10 +28,11 @@ Sammendrag av oppsett, arkitektur og utviklingsarbeid. Filmtips er en ikke-komme
 
 ## Autentisering
 
-- Felles passord gir en HMAC-signert sesjonscookie (`filmtips_session`).
-- Hver bruker har en PIN, lagret som PBKDF2-SHA256 (100k iterasjoner + salt). Etter 5 feil er brukeren låst i 15 minutter. Feil PIN gir 403.
-- Identitetscookie `filmtips_user` er signert og knyttet til PIN-hashen.
-- Admin (Hallgeir) logger inn med `ADMIN_PASSWORD` (cookie `filmtips_admin`). Admin kan slette alles anbefalinger og velge hvilket navn som helst. Andre kan bare legge inn og slette egne.
+- Ingen felles passord. Innlogging er navn + 6-sifret PIN (`POST /api/pin-login`). Første som velger et navn uten PIN lager den (`create: true`, skrives to ganger). Admin kan nullstille.
+- PIN lagres som PBKDF2-SHA256 (100k iterasjoner + salt). Etter 5 feil er brukeren låst i 15 minutter. Feil PIN gir 403. Eldre PIN-er på 4–5 siffer virker bare via `/api/identity` og bør nullstilles.
+- Identitetscookie `filmtips_user` (365 dager) er HMAC-signert med `APP_PASSWORD` og knyttet til PIN-hashen, så nullstilt PIN ugyldiggjør den. Alle `/api/*`-ruter krever gyldig identitet eller admin-cookie.
+- Innloggingsskjermen velger navn først (`GET /api/login-info`), viser PIN-felt for navn med PIN og «Lag PIN» (to felt) for navn uten.
+- Admin (Hallgeir) logger inn via «Admin» i appen med `ADMIN_PASSWORD` (cookie `filmtips_admin`). Admin kan slette alles anbefalinger og velge hvilket navn som helst (og blir tilbudt å lage PIN for navn uten). Andre kan bare legge inn og slette egne.
 
 ## Funksjoner
 
@@ -39,7 +40,7 @@ Sammendrag av oppsett, arkitektur og utviklingsarbeid. Filmtips er en ikke-komme
 - **Anbefalinger:** terningkast 1–6, kommentar, én anbefaling per bruker per film. Gjelder kun filmer.
 - **Bibliotek:** importert fra CLZ Movies (CSV), adskilt fra anbefalinger. Formater (Blu-ray, 4K UHD, DVD, Digital) vises. Anbefalte filmer som finnes i biblioteket merkes med format.
 - **Fysisk bibliotek og filsamling:** bytte øverst i Bibliotek-fanen. Filsamling = filmer med format `Digital` (vises som «Fil»). Samme film kan være i begge. Neste steg ved behov: egne felt for filer (kvalitet, lagringssted).
-- **Sortering og filter:** tittel, år (nyest/eldst), regissør, tiår, format og regissør.
+- **Sortering og filter:** tittel, år (nyest/eldst), regissør, tiår (nedtrekksliste), format og regissør.
 - **Rett match (admin):** korriger feil TMDB-treff, også med IMDb-kode eller TMDB-lenke.
 - **Legg til enkeltfilm (admin):** strekkodeskanning (html5-qrcode + UPCitemdb) eller tittelsøk.
 - **TV-serier:** `media_type` `movie`/`tv` i biblioteket, egen providers-rute, «TV»-merking.
@@ -61,7 +62,7 @@ Sammendrag av oppsett, arkitektur og utviklingsarbeid. Filmtips er en ikke-komme
 - `POST /api/admin/library/import`, `.../rematch` (kryssjekk), `.../add`
 - `PATCH /api/admin/library/:id`
 - `GET /api/admin/barcode/:code`
-- `POST /api/pin-login`, `/api/identity`, `/api/admin/login`, `/api/admin/reset-pin`
+- `POST /api/pin-login`, `GET /api/login-info`, `/api/identity`, `/api/admin/login`, `/api/admin/reset-pin`
 
 ## Kronologi
 

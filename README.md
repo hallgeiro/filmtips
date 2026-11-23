@@ -29,19 +29,20 @@ Navnene i nedtrekkslisten settes i `wrangler.jsonc` under `vars.USERS` (kommasep
 
 ## API
 
-Alle `/api/*`-ruter unntatt `/api/login` krever innloggingscookie.
+Alle `/api/*`-ruter krever innloggingscookie (PIN-identitet eller admin), unntatt `/api/pin-login`, `/api/login-info` og `/api/logout`.
 
 | Rute | Beskrivelse |
 |---|---|
-| `POST /api/login` | `{password}` setter økt-cookie |
-| `POST /api/logout` | sletter cookie |
-| `GET /api/config` | liste over navn |
+| `POST /api/pin-login` | `{username, pin, create?}` logger inn med navn + 6-sifret PIN. Med `create: true` lages PIN-en hvis navnet ikke har en |
+| `GET /api/login-info` | `{users, pinUsers}` til innloggingsskjermen (alle navn og de som har PIN) |
+| `POST /api/logout` | sletter innloggingscookien |
+| `GET /api/config` | navn, hvem som har PIN, valgt identitet og om du er admin |
 | `GET /api/search?q=[&type=multi]` | søk i TMDB (norsk). Støtter IMDb-kode/-lenke (tt1234567). `type=multi` tar med TV-serier |
 | `GET /api/movie/:id/providers`, `/api/tv/:id/providers` | strømmetjenester i Norge |
 | `GET /api/recommendations[?tmdb_id=]` | hent anbefalinger |
 | `POST /api/recommendations` | lagre/oppdater (én per person per film) |
 | `DELETE /api/recommendations/:id?username=` | slett egen anbefaling (admin kan slette alle) |
-| `POST /api/identity` | `{username, pin}` velger navn. Første gang opprettes PIN-en, deretter må den oppgis |
+| `POST /api/identity` | `{username, pin}` bytter navn når du er innlogget. Første gang opprettes PIN-en (6 siffer), deretter må den oppgis |
 | `GET /api/library[?q=&format=&tmdb_id=]` | bibliotek (importert fra CLZ), adskilt fra anbefalinger |
 | `GET /api/library/facets` | tiår som finnes i biblioteket |
 | `GET /api/admin/barcode/:code` | (admin) slå opp strekkode (UPCitemdb, 100/dag) og foreslå TMDB-treff |
@@ -59,7 +60,7 @@ Alle `/api/*`-ruter unntatt `/api/login` krever innloggingscookie.
 - Sikkerheten er bevisst enkel (navn + 6-sifret PIN med sperre ved gjetting), tilpasset familie og venner. `APP_PASSWORD` brukes bare som hemmelig nøkkel for å signere innloggings-cookies. Bytter du den, logges alle ut. Hold den lang og tilfeldig.
 - TMDB krever attribusjon. Strømdata kommer fra JustWatch. Begge er kreditert i bunnteksten.
 - Bibliotek: som admin trykker du «Importer CLZ-CSV…» og velger eksportfilen fra CLZ Movies (kolonnene Title og Format kreves). Filmer matches mot TMDB på tittel og år, og samme film i flere formater slås sammen. Importen kan kjøres på nytt uten duplikater. Anbefalte filmer som finnes i biblioteket merkes med formatet.
-- Biblioteket kan sorteres på tittel, år (nyest/eldst) og regissør (etter etternavn), filtreres på format og tiår, og søkes på tittel eller regissør. Trykk på et regissørnavn for å se alle filmene hans eller hennes. Som admin kan du rette feilmatcher («Rett») og legge til enkeltfilmer med strekkodeskanning (kamera krever https).
+- Biblioteket kan sorteres på tittel, år (nyest/eldst) og regissør (etter etternavn), filtreres på format og tiår (nedtrekksliste), og søkes på tittel eller regissør. Trykk på et regissørnavn for å se alle filmene hans eller hennes. Som admin kan du rette feilmatcher («Rett») og legge til enkeltfilmer med strekkodeskanning (kamera krever https).
 - TV og IMDb: biblioteket kan inneholde TV-serier (media_type `tv`, TMDB). TMDB-id er bare unik innen film eller TV, derfor lagres typen sammen med id-en. Anbefalinger gjelder bare filmer. Alle søkefelt godtar en IMDb-kode eller -lenke, som slås opp via TMDB. «Match på nytt» (admin) rydder titler som «: Season 4» og «Extended directors cut» og søker på film og TV.
 - OMDb (valgfritt): secret `OMDB_API_KEY` (Runtime). Brukes bare av «Match på nytt» når TMDB ikke finner tittelen. IMDb-koden fra OMDb slås opp i TMDB, og treffet merkes som usikkert. Nøkkelen må aldri sjekkes inn (repoet er public).
 - Kryssjekk: et treff godtas som sikkert bare hvis år (±2) og regissør fra CLZ stemmer med TMDB. Treff fra OMDb/Wikidata er alltid «usikre». Letterboxd og IMDb har ikke åpent API og brukes ikke direkte.
