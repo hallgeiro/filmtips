@@ -174,20 +174,33 @@ async function start() {
 
 /* ---------- Bibliotek (CLZ) ---------- */
 const FORMAT_FILTERS = ['4K UHD', 'Blu-ray', 'DVD', 'Digital'];
-const lib = { q: '', format: '', review: false, sort: 'title', decade: 0, director: '', facets: null, lastKey: null, offset: 0, total: 0, timer: null };
+const lib = { kind: 'physical', q: '', format: '', review: false, sort: 'title', decade: 0, director: '', facets: null, lastKey: null, offset: 0, total: 0, timer: null };
 const firstDirector = (d) => String(d ?? '').split('|')[0].trim();
+
+const fmtLabel = (f) => (f === 'Digital' ? 'Fil' : f);
 
 function libBadge(formats) {
 	const list = [...new Set(String(formats ?? '').split('|').map((f) => f.trim()).filter(Boolean))];
-	if (!list.length) return '';
-	return `<div class="mt-2"><span class="inline-block rounded-full bg-emerald-900/60 text-emerald-300 text-xs px-2 py-1">📀 I biblioteket: ${list.map(esc).join(' · ')}</span></div>`;
+	const physical = list.filter((f) => f !== 'Digital');
+	const files = list.includes('Digital');
+	if (!physical.length && !files) return '';
+	const pill = (txt) => `<span class="inline-block rounded-full bg-emerald-900/60 text-emerald-300 text-xs px-2 py-1">${txt}</span>`;
+	return `<div class="mt-2 flex flex-wrap gap-1">${physical.length ? pill(`📀 I biblioteket: ${physical.map(esc).join(' · ')}`) : ''}${files ? pill('💾 I filsamlingen') : ''}</div>`;
+}
+
+function renderKinds() {
+	const kinds = [['physical', '📀 Fysisk bibliotek'], ['files', '💾 Filsamling'], ['', 'Alle']];
+	$('#lib-kinds').innerHTML = kinds
+		.map(([k, label]) => `<button data-k="${k}" class="flex-1 rounded-lg py-2 text-sm ${lib.kind === k ? 'bg-emerald-600 text-white font-semibold' : 'bg-slate-800 text-slate-300'}">${label}</button>`)
+		.join('');
 }
 
 function renderFormatChips() {
 	const chip = (f, label, on) =>
 		`<button data-f="${esc(f)}" class="rounded-full px-3 py-1 text-xs ${on ? 'bg-amber-400 text-slate-900' : 'bg-slate-800 text-slate-300'}">${label}</button>`;
+	const formats = lib.kind === 'files' ? [] : lib.kind === 'physical' ? FORMAT_FILTERS.filter((f) => f !== 'Digital') : FORMAT_FILTERS;
 	$('#lib-formats').innerHTML =
-		['', ...FORMAT_FILTERS].map((f) => chip(f, f || 'Alle', !lib.review && lib.format === f)).join('') +
+		[...(formats.length ? [''] : []), ...formats].map((f) => chip(f, f ? fmtLabel(f) : 'Alle', !lib.review && lib.format === f)).join('') +
 		(isAdmin ? chip('__review', '⚠ Å sjekke', lib.review) : '');
 }
 
@@ -220,10 +233,11 @@ async function loadLibrary(reset) {
 		lib.offset = 0;
 		lib.lastKey = null;
 		$('#lib-list').innerHTML = '';
+		renderKinds();
 		renderFormatChips();
 		renderDirChip();
 		if (!lib.facets) {
-			api('/api/library/facets')
+			api('/api/library/facets?kind=' + lib.kind)
 				.then(({ decades }) => {
 					lib.facets = decades;
 					renderDecades();
@@ -236,6 +250,7 @@ async function loadLibrary(reset) {
 	try {
 		const params = new URLSearchParams({ limit: '60', offset: String(lib.offset) });
 		if (lib.q) params.set('q', lib.q);
+		if (lib.kind) params.set('kind', lib.kind);
 		if (lib.format) params.set('format', lib.format);
 		if (lib.review && isAdmin) params.set('review', '1');
 		if (lib.sort !== 'title') params.set('sort', lib.sort);
@@ -256,7 +271,7 @@ async function loadLibrary(reset) {
 				<div class="aspect-[2/3] bg-slate-700">${posterTag(m.poster_path, m.title)}</div>
 				<div class="p-2">
 					<div class="text-sm font-medium leading-tight">${esc(m.title)}</div>
-					<div class="text-xs text-slate-400">${m.year || ''}${m.media_type === 'tv' ? ' · TV' : ''} · ${esc(m.formats.split('|').join(' · '))}</div>
+					<div class="text-xs text-slate-400">${m.year || ''}${m.media_type === 'tv' ? ' · TV' : ''} · ${esc(m.formats.split('|').map(fmtLabel).join(' · '))}</div>
 					${m.director ? `<span data-dir="${esc(firstDirector(m.director))}" class="inline-block text-xs text-slate-400 hover:text-amber-300 hover:underline">${esc(firstDirector(m.director))}</span>` : ''}
 					${m.match === 'fuzzy' ? '<div class="text-xs text-amber-400">usikker match</div>' : ''}${m.tmdb_id ? '' : m.collection ? '<div class="text-xs text-sky-400">Samling</div>' : '<div class="text-xs text-slate-500">ikke funnet i TMDB</div>'}
 				</div>
@@ -278,6 +293,16 @@ $('#lib-q').addEventListener('input', (e) => {
 		lib.q = e.target.value.trim();
 		loadLibrary(true);
 	}, 300);
+});
+$('#lib-kinds').addEventListener('click', (e) => {
+	const b = e.target.closest('button');
+	if (!b) return;
+	lib.kind = b.dataset.k;
+	lib.format = '';
+	lib.review = false;
+	lib.decade = 0;
+	lib.facets = null;
+	loadLibrary(true);
 });
 $('#lib-formats').addEventListener('click', (e) => {
 	const b = e.target.closest('button');
@@ -397,7 +422,7 @@ function renderAddResults(results) {
 function renderAddFormats() {
 	$('#add-formats').innerHTML = FORMAT_FILTERS.map(
 		(f) =>
-			`<button data-fmt="${esc(f)}" class="rounded-full px-3 py-2 text-sm ${addFormats.has(f) ? 'bg-amber-400 text-slate-900 font-semibold' : 'bg-slate-900 border border-slate-700 text-slate-300'}">${f}</button>`,
+			`<button data-fmt="${esc(f)}" class="rounded-full px-3 py-2 text-sm ${addFormats.has(f) ? 'bg-amber-400 text-slate-900 font-semibold' : 'bg-slate-900 border border-slate-700 text-slate-300'}">${f === 'Digital' ? '💾 Fil (digital)' : f}</button>`,
 	).join('');
 }
 
@@ -473,7 +498,7 @@ $('#add-results').addEventListener('click', (e) => {
 	const b = e.target.closest('.add-pick');
 	if (!b) return;
 	addSel = JSON.parse(b.dataset.add);
-	addFormats = new Set();
+	addFormats = new Set(lib.kind === 'files' ? ['Digital'] : []); // forhåndsvalgt i filsamlingen
 	$('#add-picked').textContent = `${addSel.title}${addSel.year ? ` (${addSel.year})` : ''}`;
 	renderAddFormats();
 	$('#add-pick').classList.remove('hidden');

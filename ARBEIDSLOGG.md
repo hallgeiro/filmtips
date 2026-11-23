@@ -38,6 +38,7 @@ Sammendrag av oppsett, arkitektur og utviklingsarbeid. Filmtips er en ikke-komme
 - **Søk (TMDB):** norske titler, strømmetjenester i Norge (JustWatch via TMDB), også IMDb-kode eller -lenke.
 - **Anbefalinger:** terningkast 1–6, kommentar, én anbefaling per bruker per film. Gjelder kun filmer.
 - **Bibliotek:** importert fra CLZ Movies (CSV), adskilt fra anbefalinger. Formater (Blu-ray, 4K UHD, DVD, Digital) vises. Anbefalte filmer som finnes i biblioteket merkes med format.
+- **Fysisk bibliotek og filsamling:** bytte øverst i Bibliotek-fanen. Filsamling = filmer med format `Digital` (vises som «Fil»). Samme film kan være i begge. Neste steg ved behov: egne felt for filer (kvalitet, lagringssted).
 - **Sortering og filter:** tittel, år (nyest/eldst), regissør, tiår, format og regissør.
 - **Rett match (admin):** korriger feil TMDB-treff, også med IMDb-kode eller TMDB-lenke.
 - **Legg til enkeltfilm (admin):** strekkodeskanning (html5-qrcode + UPCitemdb) eller tittelsøk.
@@ -76,6 +77,8 @@ Sammendrag av oppsett, arkitektur og utviklingsarbeid. Filmtips er en ikke-komme
 10. Mobil-rettelser i filmvinduet (lukkeknapp, scrollposisjon). En feil underveis fjernet midlertidig alle dialoger fra `index.html`. Den ble rettet umiddelbart (commit `88a6ee6`).
 
 11. Filmkveld: ønsker og avstemning (tabeller opprettet i remote D1 før koden ble pushet).
+
+12. Bibliotek delt i fysisk bibliotek og filsamling.
 
 ## Kjente begrensninger og mulige neste steg
 

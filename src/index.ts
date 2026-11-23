@@ -681,6 +681,7 @@ app.get('/api/library', async (c) => {
 			else (where.push('(' + hits.map(() => '(tmdb_id = ? AND media_type = ?)').join(' OR ') + ')'), hits.forEach((h) => args.push(h.id, h.media_type)))
 		} else (where.push('(title LIKE ? OR director LIKE ?)'), args.push(`%${q}%`, `%${q}%`))
 	}
+	if (KIND_SQL[c.req.query('kind') ?? '']) where.push(KIND_SQL[c.req.query('kind') ?? ''])
 	if (format) (where.push('formats LIKE ?'), args.push(`%${format}%`))
 	if (director) (where.push('director LIKE ?'), args.push(`%${director}%`))
 	if (decade > 0) (where.push('(year >= ? AND year < ?)'), args.push(decade, decade + 10))
@@ -703,9 +704,16 @@ app.get('/api/library', async (c) => {
 })
 
 // Tiår som finnes i biblioteket (til filterknapper)
+// Fysisk bibliotek (plater) eller filsamling (Digital). En film kan være i begge.
+const KIND_SQL: Record<string, string> = {
+	physical: `(formats LIKE '%Blu-ray%' OR formats LIKE '%4K UHD%' OR formats LIKE '%DVD%')`,
+	files: `formats LIKE '%Digital%'`,
+}
+
 app.get('/api/library/facets', async (c) => {
+	const kind = KIND_SQL[c.req.query('kind') ?? ''] ?? '1'
 	const { results } = await c.env.DB.prepare(
-		`SELECT (year / 10) * 10 AS decade, COUNT(*) AS n FROM library WHERE year > 0 GROUP BY decade ORDER BY decade`,
+		`SELECT (year / 10) * 10 AS decade, COUNT(*) AS n FROM library WHERE year > 0 AND ${kind} GROUP BY decade ORDER BY decade`,
 	).all()
 	return c.json({ decades: results })
 })
