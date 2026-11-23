@@ -858,9 +858,7 @@ function setTab(tab) {
 	$('#tab-library').classList.toggle('hidden', tab !== 'library');
 	$('#tab-nights').classList.toggle('hidden', tab !== 'nights');
 	$('#tab-lists').classList.toggle('hidden', tab !== 'lists');
-	$('#tab-seen').classList.toggle('hidden', tab !== 'seen');
-	if (tab === 'lists') loadLists();
-	if (tab === 'seen') loadSeen();
+	if (tab === 'lists') applyListsSub();
 	if (tab === 'nights') loadNights();
 	if (tab === 'feed') loadFeed();
 	if (tab === 'library') loadLibrary(true);
@@ -1011,6 +1009,21 @@ async function threadSubmit(e) {
 
 /* ---------- Filmlister ---------- */
 let listId = null;
+let listsSub = 'lists'; // «Lister» eller «Sett» i fanen Lister
+
+const seenVisible = () => !$('#tab-lists').classList.contains('hidden') && !$('#tab-seen').classList.contains('hidden');
+
+function applyListsSub() {
+	const seen = listsSub === 'seen';
+	$('#lists-main').classList.toggle('hidden', seen);
+	$('#tab-seen').classList.toggle('hidden', !seen);
+	if (seen) loadSeen();
+	else loadLists();
+}
+$('#seen-back').addEventListener('click', () => {
+	listsSub = 'lists';
+	applyListsSub();
+});
 let currentList = null;
 let listKeys = new Set(); // "media_type:tmdb_id" for filmer som allerede er i åpen liste
 let listTimer;
@@ -1035,9 +1048,26 @@ async function loadLists() {
 	$('#list-detail').classList.add('hidden');
 	$('#lists-status').textContent = 'Henter…';
 	try {
-		const { results } = await api('/api/lists');
+		const [{ results }, mineSeen] = await Promise.all([
+			api('/api/lists'),
+			me ? api(`/api/films/${encodeURIComponent(me)}`).then((r) => r.results).catch(() => []) : Promise.resolve([]),
+		]);
 		$('#lists-status').textContent = results.length ? '' : 'Ingen lister ennå. Lag den første!';
-		$('#lists-list').innerHTML = results
+		const ratedSeen = mineSeen.filter((m) => m.rating);
+		const avgSeen = ratedSeen.length ? Math.round((ratedSeen.reduce((a, m) => a + m.rating, 0) / ratedSeen.length) * 10) / 10 : null;
+		const seenPosters = mineSeen.filter((m) => m.poster_path).slice(0, 4).map((m) => m.poster_path);
+		const seenCard = `
+			<button data-list-seen class="w-full text-left bg-slate-800 rounded-xl p-3 hover:ring-2 hover:ring-amber-400 flex gap-3 ring-1 ring-slate-700">
+				<div class="flex -space-x-3 shrink-0 items-center w-20 ${seenPosters.length ? '' : 'justify-center text-slate-300'}">
+					${seenPosters.length ? seenPosters.map((pp) => `<img src="${IMG}w92${esc(pp)}" alt="" loading="lazy" class="w-10 aspect-[2/3] object-cover rounded border border-slate-800" />`).join('') : EYE.replace('h-4 w-4', 'h-8 w-8')}
+				</div>
+				<div class="min-w-0">
+					<div class="font-semibold">${EYE} Sett</div>
+					<div class="text-sm text-slate-400">${me ? `av ${esc(me)} · ${mineSeen.length} ${mineSeen.length === 1 ? 'film' : 'filmer'}${ratedSeen.length ? ` · ${ratedSeen.length} med karakter` : ''}${avgSeen ? ` · snitt ${avgSeen}/10` : ''}` : 'Filmer du har sett og gitt karakter'}</div>
+					<p class="text-sm text-slate-300 mt-1">Alle filmer du har sett, med karakter, hvordan og når. Du kan også se de andres.</p>
+				</div>
+			</button>`;
+		$('#lists-list').innerHTML = seenCard + results
 			.map(
 				(l) => `
 			<button data-list="${l.id}" class="w-full text-left bg-slate-800 rounded-xl p-3 hover:ring-2 hover:ring-amber-400 flex gap-3">
@@ -1066,6 +1096,11 @@ $('#list-new').addEventListener('click', () => {
 });
 
 $('#lists-list').addEventListener('click', (e) => {
+	if (e.target.closest('[data-list-seen]')) {
+		listsSub = 'seen';
+		applyListsSub();
+		return;
+	}
 	const b = e.target.closest('[data-list]');
 	if (b) openList(Number(b.dataset.list));
 });
@@ -1497,6 +1532,7 @@ async function initModalLists(movie, mt, message = '', keepOpen = false) {
 		const open = e.target.closest('[data-ml-open]');
 		if (!open) return;
 		listId = Number(open.dataset.mlOpen);
+		listsSub = 'lists';
 		closeModal();
 		setTab('lists');
 	};
@@ -1627,7 +1663,7 @@ async function initRatings(movie, mt, onMine, askHow = false) {
 				body: JSON.stringify({ tmdb_id: movie.id, media_type: mt, title: movie.title, year: movie.year || null, poster_path: movie.poster_path || null, username: me, rating: n === mine ? null : n }),
 			});
 			initRatings(movie, mt, onMine, n !== mine); // etter ny karakter: spør (valgfritt) om hvordan du så den
-			if (!$('#tab-seen').classList.contains('hidden')) loadSeen();
+			if (seenVisible()) loadSeen();
 		} catch (err) {
 			const m = $('#rate-msg');
 			m.textContent = err.message;
@@ -1645,7 +1681,7 @@ async function initRatings(movie, mt, onMine, askHow = false) {
 				body: JSON.stringify({ tmdb_id: movie.id, media_type: mt, title: movie.title, year: movie.year || null, poster_path: movie.poster_path || null, username: me, seen: cb.checked }),
 			});
 			initRatings(movie, mt, onMine);
-			if (!$('#tab-seen').classList.contains('hidden')) loadSeen();
+			if (seenVisible()) loadSeen();
 		} catch (err) {
 			cb.checked = !cb.checked;
 			cb.disabled = false;
@@ -1659,7 +1695,7 @@ async function initRatings(movie, mt, onMine, askHow = false) {
 	const viewingBase = { tmdb_id: movie.id, media_type: mt, title: movie.title, year: movie.year || null, poster_path: movie.poster_path || null, username: me };
 	const refreshAfter = () => {
 		initRatings(movie, mt, onMine);
-		if (!$('#tab-seen').classList.contains('hidden')) loadSeen();
+		if (seenVisible()) loadSeen();
 	};
 	const saved = (text, ok = true) => {
 		const el = $('#seen-saved');
@@ -1676,7 +1712,7 @@ async function initRatings(movie, mt, onMine, askHow = false) {
 				body: JSON.stringify({ how: row.querySelector('[data-view-how]').value || null, seen_on: row.querySelector('[data-view-on]').value || null }),
 			});
 			saved('✓ Lagret');
-			if (!$('#tab-seen').classList.contains('hidden')) loadSeen();
+			if (seenVisible()) loadSeen();
 			if (e.target.matches('[data-view-on]')) initRatings(movie, mt, onMine); // oppdater «I dag» / «Tøm dato»
 		} catch (err) {
 			saved(err.message, false);

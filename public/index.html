@@ -48,7 +48,6 @@
 			<button data-tab="feed" class="tab flex-1 shrink-0 whitespace-nowrap rounded-lg py-2 px-3 text-xs sm:text-sm font-medium">⭐ Anbefalinger</button>
 			<button data-tab="library" class="tab flex-1 shrink-0 whitespace-nowrap rounded-lg py-2 px-3 text-xs sm:text-sm font-medium">📀 Bibliotek</button>
 			<button data-tab="lists" class="tab flex-1 shrink-0 whitespace-nowrap rounded-lg py-2 px-3 text-xs sm:text-sm font-medium">📋 Lister</button>
-			<button data-tab="seen" class="tab flex-1 shrink-0 whitespace-nowrap rounded-lg py-2 px-3 text-xs sm:text-sm font-medium"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="inline-block h-4 w-4 align-[-2px]" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg> Sett</button>
 			<button data-tab="nights" class="tab flex-1 shrink-0 whitespace-nowrap rounded-lg py-2 px-3 text-xs sm:text-sm font-medium">🎬 Filmkveld</button>
 		</nav>
 
@@ -109,41 +108,43 @@
 		</section>
 
 		<section id="tab-lists" class="hidden">
-			<div id="lists-view">
-				<button id="list-new" class="mb-3 w-full rounded-lg bg-emerald-600 py-3 text-sm font-semibold hover:bg-emerald-500">➕ Ny liste</button>
-				<div id="list-create" class="hidden mb-3"></div>
-				<p id="lists-status" class="text-slate-400 text-sm"></p>
-				<div id="lists-list" class="space-y-3"></div>
-			</div>
-			<div id="list-detail" class="hidden">
-				<button id="list-back" class="text-sm text-slate-400 hover:text-white mb-3">← Alle lister</button>
-				<div id="list-head"></div>
-				<div id="list-edit" class="hidden mt-3"></div>
-				<div id="list-add" class="hidden mt-4">
-					<input id="list-q" type="search" autocomplete="off" placeholder="Legg til film: søk i biblioteket og TMDB…"
-						class="w-full rounded-lg bg-slate-800 border border-slate-700 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-400" />
-					<div id="list-results" class="mt-2 space-y-2"></div>
+			<div id="lists-main">
+				<div id="lists-view">
+					<button id="list-new" class="mb-3 w-full rounded-lg bg-emerald-600 py-3 text-sm font-semibold hover:bg-emerald-500">➕ Ny liste</button>
+					<div id="list-create" class="hidden mb-3"></div>
+					<p id="lists-status" class="text-slate-400 text-sm"></p>
+					<div id="lists-list" class="space-y-3"></div>
 				</div>
-				<div id="list-items" class="mt-4 space-y-2"></div>
+				<div id="list-detail" class="hidden">
+					<button id="list-back" class="text-sm text-slate-400 hover:text-white mb-3">← Alle lister</button>
+					<div id="list-head"></div>
+					<div id="list-edit" class="hidden mt-3"></div>
+					<div id="list-add" class="hidden mt-4">
+						<input id="list-q" type="search" autocomplete="off" placeholder="Legg til film: søk i biblioteket og TMDB…"
+							class="w-full rounded-lg bg-slate-800 border border-slate-700 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-400" />
+						<div id="list-results" class="mt-2 space-y-2"></div>
+					</div>
+					<div id="list-items" class="mt-4 space-y-2"></div>
+				</div>
 			</div>
-		</section>
-
-		<section id="tab-seen" class="hidden">
-			<div class="flex gap-2">
-				<select id="seen-user" class="flex-1 min-w-0 rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-sm" title="Hvem sine filmer"></select>
-				<select id="seen-sort" class="rounded-lg bg-slate-800 border border-slate-700 px-2 text-sm" title="Sorter">
-					<option value="recent">Nyeste</option>
-					<option value="rating">Karakter (høyest)</option>
-					<option value="rating_asc">Karakter (lavest)</option>
-					<option value="title">Tittel A–Å</option>
-				</select>
+			<div id="tab-seen" class="hidden">
+				<button id="seen-back" class="mb-3 text-sm text-slate-400 hover:text-white">← Alle lister</button>
+				<div class="flex gap-2">
+					<select id="seen-user" class="flex-1 min-w-0 rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-sm" title="Hvem sine filmer"></select>
+					<select id="seen-sort" class="rounded-lg bg-slate-800 border border-slate-700 px-2 text-sm" title="Sorter">
+						<option value="recent">Nyeste</option>
+						<option value="rating">Karakter (høyest)</option>
+						<option value="rating_asc">Karakter (lavest)</option>
+						<option value="title">Tittel A–Å</option>
+					</select>
+				</div>
+				<input id="seen-q" type="search" placeholder="Søk i listen…" autocomplete="off"
+					class="mt-2 w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400" />
+				<select id="seen-how-filter" class="mt-2 w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-sm" title="Hvordan filmen ble sett"></select>
+				<div id="seen-filters" class="mt-2 flex flex-wrap gap-2"></div>
+				<p id="seen-status" class="mt-3 text-sm text-slate-400"></p>
+				<div id="seen-list" class="mt-3 space-y-2"></div>
 			</div>
-			<input id="seen-q" type="search" placeholder="Søk i listen…" autocomplete="off"
-				class="mt-2 w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400" />
-			<select id="seen-how-filter" class="mt-2 w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-sm" title="Hvordan filmen ble sett"></select>
-			<div id="seen-filters" class="mt-2 flex flex-wrap gap-2"></div>
-			<p id="seen-status" class="mt-3 text-sm text-slate-400"></p>
-			<div id="seen-list" class="mt-3 space-y-2"></div>
 		</section>
 
 		<section id="tab-feed" class="hidden">

@@ -119,7 +119,7 @@ Sammendrag av oppsett, arkitektur og utviklingsarbeid. Filmtips er en ikke-komme
 
 31. Filmvinduet viser «På andres lister»: andre brukeres lister som inneholder filmen (med eier og, i rangerte lister, plassen «nr. N»), med «Åpne →» rett til listen. `GET /api/lists?tmdb_id=&media_type=` gir `item_rank`.
 
-32. Sett og karakterer per bruker: ny fane «Sett» (velg bruker, filter Alle/Med/Uten karakter, sortering, søk, snitt). Tabell `seen_films` (opprettet i remote D1 før push, eksisterende karakterer kopiert inn). I filmvinduet: avkrysning «Jeg har sett denne» uten karakter og «Sett av …». Å gi karakter (også via anbefaling) markerer alltid som sett. Har du gitt karakter, kan «sett» ikke fjernes uten å fjerne karakteren først. `GET /api/ratings` gir `seen`.
+32. Sett og karakterer per bruker: underfane «Sett» under Lister (velg bruker, filter Alle/Med/Uten karakter, sortering, søk, snitt). Tabell `seen_films` (opprettet i remote D1 før push, eksisterende karakterer kopiert inn). I filmvinduet: avkrysning «Jeg har sett denne» uten karakter og «Sett av …». Å gi karakter (også via anbefaling) markerer alltid som sett. Har du gitt karakter, kan «sett» ikke fjernes uten å fjerne karakteren først. `GET /api/ratings` gir `seen`.
 
 33. Hvordan og når: `seen_films` har kolonnene `how` (kino, streaming, bluray, 4k, dvd, fil, tv, annet) og `seen_on` (dato), lagt til i remote D1 med ALTER før push. I filmvinduet vises «Hvordan så du den?» og dato (med «I dag») når filmen er sett eller har karakter, og lagres ved endring. «Sett av» viser hvordan, og «Sett»-fanen viser hvordan og dato, kan filtreres på hvordan og sorteres etter dato. En film har ett «sett»-innslag per bruker (ikke flere visninger).
 
@@ -128,6 +128,8 @@ Sammendrag av oppsett, arkitektur og utviklingsarbeid. Filmtips er en ikke-komme
 35. Flere visninger per film: tabell `viewings` (id, tmdb_id, media_type, username, how, seen_on), opprettet i remote D1 før push. Filmvinduet har «Visninger» med én rad per visning (måte + dato, endres og lagres med en gang, ✕ fjerner) og «＋ Legg til visning» (starter på dagens dato). Å legge til en visning markerer filmen som sett. `seen_films.how`/`seen_on` er utgått (aldri brukt til data). «Sett»-fanen viser siste visning og «N visninger», filteret på måte treffer filmer med minst én slik visning, og «Nyeste» sorterer på siste visningsdato. `GET /api/ratings` gir `viewings`. Endringen i punkt 33 er erstattet av dette.
 
 36. Visninger: måte og dato er alltid valgfrie. «＋ Legg til visning» lager en tom visning (ingen forhåndsutfylt dato), og hver rad har «I dag» / «Tøm dato». Etter at man gir en ny karakter og ikke har noen visninger, spørres man (valgfritt) «Hvordan så du den?» med valg (Kino, Streaming …) og «Hopp over». Å velge lager en visning uten dato.
+
+37. «Sett» er en egen, festet liste øverst i Lister-fanen (kort med øye-ikon, antall filmer, med karakter og snitt for innlogget bruker). Trykk på kortet for å åpne Sett-visningen (velg bruker, filtre, sortering), med «← Alle lister» tilbake. Det er ingen egen fane i hovedmenyen. `#tab-seen` ligger inni `#tab-lists`, og `listsSub` styrer hva som vises.
 
 ## Kjente begrensninger og mulige neste steg
 
