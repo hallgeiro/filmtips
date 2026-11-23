@@ -1081,7 +1081,7 @@ async function loadLists() {
 				</div>
 			</button>`,
 			)
-			.join('');
+			.join('') + seenCard;
 	} catch (err) {
 		$('#lists-status').textContent = err.message;
 	}
