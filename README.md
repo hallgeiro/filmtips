@@ -46,7 +46,7 @@ Alle `/api/*`-ruter krever innloggingscookie (PIN-identitet eller admin), unntat
 | `POST /api/recommendations/:id/comments` | `{username, body}` (maks 500 tegn) legger til kommentar som deg selv |
 | `DELETE /api/comments/:id` | slett egen kommentar (admin kan slette alle) |
 | `POST /api/identity` | `{username, pin}` bytter navn når du er innlogget. Første gang opprettes PIN-en (6 siffer), deretter må den oppgis |
-| `GET /api/lists`, `POST /api/lists` | alle filmlister (med forhåndsvisning av plakater) / opprett `{username, title, description?, ranked?}` |
+| `GET /api/lists[?tmdb_id=&media_type=]`, `POST /api/lists` | alle filmlister (med forhåndsvisning av plakater) / opprett `{username, title, description?, ranked?}` |
 | `GET/PATCH/DELETE /api/lists/:id` | hent liste med filmer / endre / slett (eier eller admin) |
 | `POST /api/lists/:id/items` | `{tmdb_id, media_type, title, year, poster_path}` legger film i listen (maks 200) |
 | `DELETE /api/lists/:id/items/:itemId`, `POST .../move` | fjern film / flytt opp eller ned `{direction:'up'|'down'}` |
@@ -64,7 +64,7 @@ Alle `/api/*`-ruter krever innloggingscookie (PIN-identitet eller admin), unntat
 
 - Admin: sett secret `ADMIN_PASSWORD`. Trykk «Admin» øverst i appen og skriv passordet for å kunne slette andres anbefalinger. Uten admin kan man bare slette egne (tillitsbasert på valgt navn).
 - Innlogging: velg navn og skriv en PIN på 6 siffer. Det finnes ikke noe felles passord. Første som velger et navn uten PIN lager den (skriv den to ganger). Eldre PIN-er på 4–5 siffer må nullstilles av admin. PIN lagres som PBKDF2-hash i tabellen `user_pins`, med lås i 15 minutter etter 5 feil forsøk. Uten admin kan man bare anbefale og slette som navnet man har logget inn som. Glemt PIN: admin trykker «Nullstill PIN». Kjør `npm run db:setup:remote` (eller kjør `schema.sql` mot D1) når tabellen `user_pins` mangler.
-- Lister: i fanen «Lister» lager brukerne egne filmlister (favoritter, film noir osv.), rangerte (nummerert, med flytt opp/ned) eller ikke. Alle kan se alle lister, bare eieren (og admin) kan endre. Filmer legges til ved å søke i både biblioteket og TMDB.
+- Lister: i fanen «Lister» lager brukerne egne filmlister (favoritter, film noir osv.), rangerte (nummerert, med flytt opp/ned) eller ikke. Alle kan se alle lister, bare eieren (og admin) kan endre. Filmer legges til ved å søke i både biblioteket og TMDB, eller fra «Mine lister» i filmvinduet (legg i en egen liste eller lag en ny).
 - Sikkerheten er bevisst enkel (navn + 6-sifret PIN med sperre ved gjetting), tilpasset familie og venner. `APP_PASSWORD` brukes bare som hemmelig nøkkel for å signere innloggings-cookies. Bytter du den, logges alle ut. Hold den lang og tilfeldig.
 - TMDB krever attribusjon. Strømdata kommer fra JustWatch. Begge er kreditert i bunnteksten.
 - Bibliotek: som admin trykker du «Importer CLZ-CSV…» og velger eksportfilen fra CLZ Movies (kolonnene Title og Format kreves). Filmer matches mot TMDB på tittel og år, og samme film i flere formater slås sammen. Importen kan kjøres på nytt uten duplikater. Anbefalte filmer som finnes i biblioteket merkes med formatet.

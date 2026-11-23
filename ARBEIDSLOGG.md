@@ -101,6 +101,8 @@ Sammendrag av oppsett, arkitektur og utviklingsarbeid. Filmtips er en ikke-komme
 
 22. Filmlister: ny fane «Lister». Tabeller `film_lists` og `film_list_items` (opprettet i remote D1 før push). Brukerne lager lister (rangert eller ikke, med beskrivelse), alle ser alle, eieren/admin endrer. Filmer legges til via søk som slår opp i både biblioteket (`/api/library`) og TMDB (`/api/search`). Biblioteksfilmer uten TMDB-treff kan ikke legges i lister. Rangerte lister har ▲/▼ (`POST .../move`). Fanelinjen kan rulles sideveis.
 
+23. Filmvinduet har «Mine lister»: nedtrekksliste med egne lister (lister som allerede har filmen er avmerket) og «Ny liste…» som lager listen og legger filmen inn i ett steg. Gjelder både film og TV, fra Søk, Bibliotek, Feed og lister. `GET /api/lists?tmdb_id=&media_type=` gir `has_item` per liste.
+
 ## Kjente begrensninger og mulige neste steg
 
 - Rundt 30 titler må rettes manuelt med «Rett match» (IMDb-kode eller TMDB-lenke). Det koster ingen OMDb-oppslag.

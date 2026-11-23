@@ -1317,6 +1317,72 @@ function providerRow(label, list) {
 		</div>`;
 }
 
+// «Mine lister» i filmvinduet: legg filmen i en egen liste, eller lag en ny liste med den
+async function initModalLists(movie, mt, message = '') {
+	const box = $('#modal-lists');
+	if (!box) return;
+	if (!me) {
+		box.textContent = 'Velg navnet ditt først for å bruke lister.';
+		return;
+	}
+	let mine = [];
+	try {
+		const { results } = await api(`/api/lists?tmdb_id=${movie.id}&media_type=${mt}`);
+		mine = results.filter((l) => l.username === me);
+	} catch (err) {
+		box.textContent = err.message;
+		return;
+	}
+	const firstFree = mine.find((l) => !l.has_item);
+	box.innerHTML = `
+		<div class="flex gap-2">
+			<select id="ml-select" class="flex-1 min-w-0 rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-sm">
+				${mine.map((l) => `<option value="${l.id}" ${l.has_item ? 'disabled' : ''}>${esc(l.title)}${l.has_item ? ' ✓ (allerede i listen)' : ''}</option>`).join('')}
+				<option value="new">➕ Ny liste…</option>
+			</select>
+			<button id="ml-add" class="shrink-0 rounded-lg bg-amber-400 text-slate-900 font-semibold px-4 text-sm">Legg til</button>
+		</div>
+		<div id="ml-new" class="hidden mt-2 space-y-2">
+			<input id="ml-title" maxlength="100" autocomplete="off" placeholder="Navn på ny liste, f.eks. Film noir" class="${INPUT_CLS}" />
+			<label class="flex items-center gap-2 text-sm text-slate-300"><input id="ml-ranked" type="checkbox" /> Rangert liste</label>
+		</div>
+		<p id="ml-msg" class="text-sm mt-2 ${message ? 'text-emerald-300' : 'hidden'}">${esc(message)}</p>`;
+	const sel = $('#ml-select');
+	sel.value = firstFree ? String(firstFree.id) : 'new';
+	const syncNew = () => $('#ml-new').classList.toggle('hidden', sel.value !== 'new');
+	syncNew();
+	sel.addEventListener('change', syncNew);
+
+	$('#ml-add').addEventListener('click', async () => {
+		const msg = $('#ml-msg');
+		const fail = (t) => {
+			msg.textContent = t;
+			msg.className = 'text-sm mt-2 text-red-400';
+		};
+		const item = { tmdb_id: movie.id, media_type: mt, title: movie.title, year: movie.year || null, poster_path: movie.poster_path || null };
+		$('#ml-add').disabled = true;
+		try {
+			let listId2 = Number(sel.value);
+			let name = mine.find((l) => l.id === listId2)?.title;
+			if (sel.value === 'new') {
+				name = $('#ml-title').value.trim();
+				if (!name) {
+					$('#ml-add').disabled = false;
+					return fail('Gi den nye listen et navn.');
+				}
+				const r = await api('/api/lists', { method: 'POST', body: JSON.stringify({ username: me, title: name, ranked: $('#ml-ranked').checked }) });
+				listId2 = r.id;
+			}
+			await api(`/api/lists/${listId2}/items`, { method: 'POST', body: JSON.stringify(item) });
+			initModalLists(movie, mt, `✓ Lagt til i «${name}»`);
+			if (!$('#tab-lists').classList.contains('hidden')) loadLists();
+		} catch (err) {
+			$('#ml-add').disabled = false;
+			fail(err.message);
+		}
+	});
+}
+
 async function openMovie(movie) {
 	const mt = movie.media_type === 'tv' ? 'tv' : 'movie';
 	const isTv = mt === 'tv';
@@ -1337,6 +1403,9 @@ async function openMovie(movie) {
 		<h3 class="font-semibold mt-5 mb-2">Hvor kan du se den i Norge?</h3>
 		<div id="providers" class="text-sm text-slate-400">Henter…</div>
 
+		<h3 class="font-semibold mt-5 mb-2">Mine lister</h3>
+		<div id="modal-lists" class="text-sm text-slate-400">Henter…</div>
+
 		${
 			isTv
 				? '<p class="text-xs text-slate-500 mt-5">TV-serie: anbefalinger gjelder bare filmer.</p>'
@@ -1351,6 +1420,8 @@ async function openMovie(movie) {
 			<p id="rec-error" class="text-red-400 text-sm hidden"></p>
 			<button class="w-full rounded-lg bg-amber-400 text-slate-900 font-semibold py-3 hover:bg-amber-300">Lagre anbefaling</button>
 		</form>`}`;
+
+	initModalLists(movie, mt);
 
 	let rating = 0;
 	const renderDice = () => {
