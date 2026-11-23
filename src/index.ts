@@ -366,6 +366,7 @@ app.post('/api/recommendations', async (c) => {
 	)
 		.bind(tmdb_id, title, poster_path, username, rating)
 		.run()
+	await markSeen(c, { tmdb_id, media_type: 'movie', title, year: yearOf(b.year), poster_path, username })
 
 	return c.json({ ok: true }, 201)
 })
@@ -388,6 +389,13 @@ app.delete('/api/recommendations/:id', async (c) => {
 
 /* ---------- Karakterer (1–10, alle brukere, film og TV) ---------- */
 
+// Å gi karakter regnes alltid som å ha sett filmen
+const markSeen = (c: Ctx, f: { tmdb_id: number; media_type: string; title: string; year: string | null; poster_path: string | null; username: string }) =>
+	c.env.DB.prepare(`INSERT OR IGNORE INTO seen_films (tmdb_id, media_type, title, year, poster_path, username) VALUES (?, ?, ?, ?, ?, ?)`)
+		.bind(f.tmdb_id, f.media_type, f.title, f.year, f.poster_path, f.username)
+		.run()
+const yearOf = (v: unknown) => String(v ?? '').trim().slice(0, 4) || null
+
 app.get('/api/ratings', async (c) => {
 	const tmdbId = Number(c.req.query('tmdb_id'))
 	const mediaType = c.req.query('media_type') === 'tv' ? 'tv' : 'movie'
@@ -397,7 +405,12 @@ app.get('/api/ratings', async (c) => {
 		.all<{ username: string; rating: number }>()
 	const count = results.length
 	const avg = count ? Math.round((results.reduce((a, r) => a + r.rating, 0) / count) * 10) / 10 : null
-	return c.json({ results, count, avg })
+	// Hvem har sett filmen (avkrysset «sett» eller gitt karakter)
+	const { results: seenRows } = await c.env.DB.prepare(`SELECT username FROM seen_films WHERE tmdb_id = ? AND media_type = ?`)
+		.bind(tmdbId, mediaType)
+		.all<{ username: string }>()
+	const seen = [...new Set([...seenRows.map((r) => r.username), ...results.map((r) => r.username)])]
+	return c.json({ results, count, avg, seen })
 })
 
 // Gi (eller fjern, med rating: null) din karakter på en film eller serie
@@ -431,11 +444,53 @@ app.post('/api/ratings', async (c) => {
 	)
 		.bind(tmdb_id, media_type, title, poster_path, who.user, rating)
 		.run()
+	await markSeen(c, { tmdb_id, media_type, title, year: yearOf(b.year), poster_path, username: who.user })
 	// Hold en eventuell anbefaling i samsvar med karakteren
 	if (media_type === 'movie') {
 		await c.env.DB.prepare(`UPDATE recommendations SET rating = ? WHERE tmdb_id = ? AND username = ?`).bind(rating, tmdb_id, who.user).run()
 	}
 	return c.json({ ok: true })
+})
+
+/* ---------- Sett film (uten karakter) og oversikt per bruker ---------- */
+
+// Kryss av (seen: true) eller fjern (seen: false) «sett». Har du gitt karakter, må den fjernes først.
+app.post('/api/seen', async (c) => {
+	const b = await c.req.json<any>().catch(() => null)
+	if (!b) return c.json({ error: 'Ugyldig JSON' }, 400)
+	const who = await actAs(c, b.username)
+	if ('error' in who) return c.json({ error: who.error }, who.status)
+	const tmdb_id = Number(b.tmdb_id)
+	const media_type = b.media_type === 'tv' ? 'tv' : 'movie'
+	if (!Number.isInteger(tmdb_id) || tmdb_id <= 0) return c.json({ error: 'Ugyldig film' }, 400)
+
+	if (b.seen === false) {
+		const rated = await c.env.DB.prepare(`SELECT 1 AS ok FROM ratings WHERE tmdb_id = ? AND media_type = ? AND username = ?`).bind(tmdb_id, media_type, who.user).first()
+		if (rated) return c.json({ error: 'Du har gitt karakter på denne. Fjern karakteren først.' }, 400)
+		await c.env.DB.prepare(`DELETE FROM seen_films WHERE tmdb_id = ? AND media_type = ? AND username = ?`).bind(tmdb_id, media_type, who.user).run()
+		return c.json({ ok: true })
+	}
+
+	const title = String(b.title ?? '').trim()
+	const poster_path = typeof b.poster_path === 'string' && /^\/[\w.-]+$/.test(b.poster_path) ? b.poster_path : null
+	if (!title || title.length > 200) return c.json({ error: 'Ugyldig tittel' }, 400)
+	await markSeen(c, { tmdb_id, media_type, title, year: yearOf(b.year), poster_path, username: who.user })
+	return c.json({ ok: true })
+})
+
+// Alle filmer en bruker har sett, med karakter hvis gitt. Åpent for alle innloggede.
+app.get('/api/films/:username', async (c) => {
+	const name = c.req.param('username')
+	if (!getUsers(c.env).includes(name)) return c.json({ error: 'Ukjent navn' }, 400)
+	const { results } = await c.env.DB.prepare(
+		`SELECT s.tmdb_id, s.media_type, s.title, s.year, s.poster_path, s.seen_at, r.rating
+		 FROM seen_films s
+		 LEFT JOIN ratings r ON r.tmdb_id = s.tmdb_id AND r.media_type = s.media_type AND r.username = s.username
+		 WHERE s.username = ? ORDER BY s.seen_at DESC, s.id DESC LIMIT 2000`,
+	)
+		.bind(name)
+		.all()
+	return c.json({ results })
 })
 
 /* ---------- Kommentarer på anbefalinger ---------- */

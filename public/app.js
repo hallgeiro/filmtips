@@ -855,7 +855,9 @@ function setTab(tab) {
 	$('#tab-library').classList.toggle('hidden', tab !== 'library');
 	$('#tab-nights').classList.toggle('hidden', tab !== 'nights');
 	$('#tab-lists').classList.toggle('hidden', tab !== 'lists');
+	$('#tab-seen').classList.toggle('hidden', tab !== 'seen');
 	if (tab === 'lists') loadLists();
+	if (tab === 'seen') loadSeen();
 	if (tab === 'nights') loadNights();
 	if (tab === 'feed') loadFeed();
 	if (tab === 'library') loadLibrary(true);
@@ -1245,6 +1247,82 @@ $('#list-q').addEventListener('input', (e) => {
 	}, 350);
 });
 
+/* ---------- Sett og karakterer per bruker ---------- */
+const seenState = { user: '', filter: 'all', sort: 'recent', q: '', rows: [] };
+
+async function loadSeen() {
+	$('#seen-user').innerHTML = users.map((u) => `<option>${esc(u)}</option>`).join('');
+	if (!users.includes(seenState.user)) seenState.user = users.includes(me) ? me : users[0] || '';
+	$('#seen-user').value = seenState.user;
+	$('#seen-sort').value = seenState.sort;
+	if (!seenState.user) return;
+	$('#seen-status').textContent = 'Henter…';
+	try {
+		const { results } = await api(`/api/films/${encodeURIComponent(seenState.user)}`);
+		seenState.rows = results;
+		renderSeen();
+	} catch (err) {
+		$('#seen-status').textContent = err.message;
+	}
+}
+
+function renderSeen() {
+	const all = seenState.rows;
+	const rated = all.filter((r) => r.rating);
+	const unrated = all.length - rated.length;
+	const avg = rated.length ? Math.round((rated.reduce((a, r) => a + r.rating, 0) / rated.length) * 10) / 10 : null;
+	const chip = (k, label) =>
+		`<button data-seen-filter="${k}" class="rounded-full px-3 py-1 text-xs ${seenState.filter === k ? 'bg-amber-400 text-slate-900' : 'bg-slate-800 text-slate-300'}">${label}</button>`;
+	$('#seen-filters').innerHTML = chip('all', `Alle (${all.length})`) + chip('rated', `Med karakter (${rated.length})`) + chip('unrated', `Uten karakter (${unrated})`);
+
+	const q = seenState.q.toLowerCase();
+	let rows = all.filter((r) => (seenState.filter === 'rated' ? r.rating : seenState.filter === 'unrated' ? !r.rating : true) && (!q || r.title.toLowerCase().includes(q)));
+	const byTitle = (a, b) => a.title.localeCompare(b.title, 'nb');
+	if (seenState.sort === 'title') rows = [...rows].sort(byTitle);
+	else if (seenState.sort === 'rating') rows = [...rows].sort((a, b) => (b.rating || 0) - (a.rating || 0) || byTitle(a, b));
+	else if (seenState.sort === 'rating_asc') rows = [...rows].sort((a, b) => (a.rating || 99) - (b.rating || 99) || byTitle(a, b));
+
+	$('#seen-status').textContent = all.length
+		? `${seenState.user}: ${all.length} sette · ${rated.length} med karakter${avg ? ` · snitt ${avg}/10` : ''}`
+		: `${seenState.user} har ikke sett eller gitt karakter på noen filmer ennå.`;
+	$('#seen-list').innerHTML = rows
+		.map(
+			(m) => `
+		<button data-movie='${esc(JSON.stringify({ id: m.tmdb_id, media_type: m.media_type, title: m.title, year: m.year, poster_path: m.poster_path }))}' class="seen-movie flex w-full items-center gap-3 rounded-xl bg-slate-800 p-2 text-left hover:ring-2 hover:ring-amber-400">
+			<div class="w-10 shrink-0 aspect-[2/3] overflow-hidden rounded bg-slate-700">${posterTag(m.poster_path, m.title, 'w92')}</div>
+			<div class="min-w-0 flex-1">
+				<div class="text-sm font-medium leading-tight">${esc(m.title)}</div>
+				<div class="text-xs text-slate-400">${esc(m.year ?? '')}${m.media_type === 'tv' ? ' · TV' : ''}</div>
+			</div>
+			<div class="shrink-0 text-sm ${m.rating ? 'font-semibold text-amber-300' : 'text-slate-400'}">${m.rating ? `⭐ ${m.rating}/10` : '👁 Sett'}</div>
+		</button>`,
+		)
+		.join('');
+}
+
+$('#seen-user').addEventListener('change', (e) => {
+	seenState.user = e.target.value;
+	loadSeen();
+});
+$('#seen-sort').addEventListener('change', (e) => {
+	seenState.sort = e.target.value;
+	renderSeen();
+});
+$('#seen-q').addEventListener('input', (e) => {
+	seenState.q = e.target.value.trim();
+	renderSeen();
+});
+$('#seen-filters').addEventListener('click', (e) => {
+	const b = e.target.closest('[data-seen-filter]');
+	if (!b) return;
+	seenState.filter = b.dataset.seenFilter;
+	renderSeen();
+});
+$('#seen-list').addEventListener('click', (e) => {
+	const b = e.target.closest('.seen-movie');
+	if (b) openMovie(JSON.parse(b.dataset.movie));
+});
+
 /* ---------- Feed ---------- */
 async function loadFeed() {
 	$('#feed-status').textContent = 'Henter…';
@@ -1458,9 +1536,19 @@ async function initRatings(movie, mt, onMine) {
 		return;
 	}
 	const mine = data.results.find((r) => r.username === me)?.rating ?? 0;
+	const iSeen = !!mine || data.seen.includes(me);
 	if (onMine) onMine(mine);
 	box.innerHTML = `
+		${
+			me
+				? `<label class="mb-3 flex items-center gap-3 text-sm text-slate-200 ${mine ? '' : 'cursor-pointer'}">
+			<input id="seen-cb" type="checkbox" ${iSeen ? 'checked' : ''} ${mine ? 'disabled' : ''} class="h-5 w-5 shrink-0 accent-amber-400" />
+			<span>👁 Jeg har sett denne${mine ? ' <span class="text-xs text-slate-500">(har karakter, regnes som sett)</span>' : ''}</span>
+		</label>`
+				: ''
+		}
 		<div class="text-slate-300">${data.count ? `<span class="text-amber-300 font-semibold">⭐ ${data.avg}/10</span> snitt · ${data.count} ${data.count === 1 ? 'karakter' : 'karakterer'}` : 'Ingen har gitt karakter ennå.'}</div>
+		${data.seen.length ? `<div class="mt-1 text-xs text-slate-400">Sett av ${data.seen.map(esc).join(', ')}</div>` : ''}
 		${data.count ? `<div class="flex flex-wrap gap-2 mt-2">${data.results.map((r) => `<span class="rounded-full bg-slate-900 px-2 py-1 text-xs text-slate-300">${esc(r.username)} <b class="text-amber-300">${r.rating}</b></span>`).join('')}</div>` : ''}
 		${
 			me
@@ -1479,10 +1567,31 @@ async function initRatings(movie, mt, onMine) {
 		try {
 			await api('/api/ratings', {
 				method: 'POST',
-				body: JSON.stringify({ tmdb_id: movie.id, media_type: mt, title: movie.title, poster_path: movie.poster_path || null, username: me, rating: n === mine ? null : n }),
+				body: JSON.stringify({ tmdb_id: movie.id, media_type: mt, title: movie.title, year: movie.year || null, poster_path: movie.poster_path || null, username: me, rating: n === mine ? null : n }),
 			});
 			initRatings(movie, mt, onMine);
+			if (!$('#tab-seen').classList.contains('hidden')) loadSeen();
 		} catch (err) {
+			const m = $('#rate-msg');
+			m.textContent = err.message;
+			m.classList.remove('hidden');
+		}
+	});
+
+	// «Jeg har sett denne»: lagres med en gang, uten karakter
+	$('#seen-cb')?.addEventListener('change', async (e) => {
+		const cb = e.target;
+		cb.disabled = true;
+		try {
+			await api('/api/seen', {
+				method: 'POST',
+				body: JSON.stringify({ tmdb_id: movie.id, media_type: mt, title: movie.title, year: movie.year || null, poster_path: movie.poster_path || null, username: me, seen: cb.checked }),
+			});
+			initRatings(movie, mt, onMine);
+			if (!$('#tab-seen').classList.contains('hidden')) loadSeen();
+		} catch (err) {
+			cb.checked = !cb.checked;
+			cb.disabled = false;
 			const m = $('#rate-msg');
 			m.textContent = err.message;
 			m.classList.remove('hidden');

@@ -28,6 +28,20 @@ CREATE TABLE IF NOT EXISTS ratings (
   UNIQUE (tmdb_id, media_type, username)
 );
 
+-- Sett film: avkrysning uten karakter. Å gi karakter regnes alltid som sett (raden opprettes automatisk).
+CREATE TABLE IF NOT EXISTS seen_films (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  tmdb_id     INTEGER NOT NULL,
+  media_type  TEXT    NOT NULL DEFAULT 'movie',
+  title       TEXT    NOT NULL,
+  year        TEXT,
+  poster_path TEXT,
+  username    TEXT    NOT NULL,
+  seen_at     TEXT    NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (tmdb_id, media_type, username)
+);
+CREATE INDEX IF NOT EXISTS idx_seen_user ON seen_films (username, seen_at DESC);
+
 -- Kommentarer på andres (og egne) anbefalinger
 CREATE TABLE IF NOT EXISTS rec_comments (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
