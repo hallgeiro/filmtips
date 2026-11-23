@@ -1326,13 +1326,16 @@ async function initModalLists(movie, mt, message = '', keepOpen = false) {
 		return;
 	}
 	let mine = [];
+	let allLists = [];
 	try {
 		const { results } = await api(`/api/lists?tmdb_id=${movie.id}&media_type=${mt}`);
+		allLists = results;
 		mine = results.filter((l) => l.username === me);
 	} catch (err) {
 		box.textContent = err.message;
 		return;
 	}
+	const others = allLists.filter((l) => l.username !== me && l.has_item);
 	const picked = mine.filter((l) => l.has_item);
 	const summary = mine.length ? (picked.length ? picked.map((l) => esc(l.title)).join(', ') : 'Ingen valgt') : 'Du har ingen lister ennå';
 	box.innerHTML = `
@@ -1366,7 +1369,20 @@ async function initModalLists(movie, mt, message = '', keepOpen = false) {
 			<label class="flex items-center gap-2 text-sm text-slate-300"><input id="ml-ranked" type="checkbox" /> Rangert liste (nummerert)</label>
 			<button id="ml-create" class="w-full rounded-lg bg-amber-400 text-slate-900 font-semibold py-2 text-sm">Opprett og legg til</button>
 		</div>
-		<p id="ml-msg" class="text-sm mt-2 ${message ? 'text-emerald-300' : 'hidden'}">${esc(message)}</p>`;
+		<p id="ml-msg" class="text-sm mt-2 ${message ? 'text-emerald-300' : 'hidden'}">${esc(message)}</p>
+		${
+			others.length
+				? `<h4 class="mt-4 mb-1 text-xs font-semibold text-slate-400">På andres lister</h4>
+		<div class="space-y-1">${others
+			.map(
+				(l) => `<button type="button" data-ml-open="${l.id}" class="flex w-full items-center justify-between gap-3 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-left text-sm hover:border-amber-400">
+			<span class="min-w-0 break-words"><span class="text-slate-100">${esc(l.title)}</span> <span class="text-slate-400">· ${esc(l.username)}${l.ranked ? ` · nr. ${l.item_rank}` : ''}</span></span>
+			<span class="shrink-0 font-semibold text-amber-300">Åpne →</span>
+		</button>`,
+			)
+			.join('')}</div>`
+				: ''
+		}`;
 
 	const item = { tmdb_id: movie.id, media_type: mt, title: movie.title, year: movie.year || null, poster_path: movie.poster_path || null };
 	const fail = (t) => {
@@ -1380,13 +1396,13 @@ async function initModalLists(movie, mt, message = '', keepOpen = false) {
 	};
 
 	// «Åpne →»: gå rett til listen i Lister-fanen
-	$('#ml-details')?.addEventListener('click', (e) => {
+	box.onclick = (e) => {
 		const open = e.target.closest('[data-ml-open]');
 		if (!open) return;
 		listId = Number(open.dataset.mlOpen);
 		closeModal();
 		setTab('lists');
-	});
+	};
 
 	// Kryss av/på: legg til eller fjern filmen med en gang
 	$('#ml-details')?.addEventListener('change', async (e) => {

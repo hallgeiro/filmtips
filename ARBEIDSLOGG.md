@@ -117,6 +117,8 @@ Sammendrag av oppsett, arkitektur og utviklingsarbeid. Filmtips er en ikke-komme
 
 30. Hver liste i «Mine lister»-menyen har «Åpne →» som lukker filmvinduet og går rett til listen i Lister-fanen.
 
+31. Filmvinduet viser «På andres lister»: andre brukeres lister som inneholder filmen (med eier og, i rangerte lister, plassen «nr. N»), med «Åpne →» rett til listen. `GET /api/lists?tmdb_id=&media_type=` gir `item_rank`.
+
 ## Kjente begrensninger og mulige neste steg
 
 - Rundt 30 titler må rettes manuelt med «Rett match» (IMDb-kode eller TMDB-lenke). Det koster ingen OMDb-oppslag.
