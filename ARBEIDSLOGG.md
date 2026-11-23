@@ -80,6 +80,8 @@ Sammendrag av oppsett, arkitektur og utviklingsarbeid. Filmtips er en ikke-komme
 
 12. Bibliotek delt i fysisk bibliotek og filsamling.
 
+13. Innlogging: gyldig PIN-identitet (`filmtips_user`) gir nå også tilgang, og passord-økten fornyes ved bruk (`/api/config`). Logg ut fjerner begge cookiene. Passord kreves bare på ny enhet, ved slettede cookies eller etter passordbytte.
+
 ## Kjente begrensninger og mulige neste steg
 
 - Rundt 30 titler må rettes manuelt med «Rett match» (IMDb-kode eller TMDB-lenke). Det koster ingen OMDb-oppslag.

@@ -38,6 +38,16 @@ async function sessionToken(password: string, label = 'filmtips-session-v1'): Pr
 	return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, '0')).join('')
 }
 
+async function setSessionCookie(c: Ctx) {
+	setCookie(c, COOKIE, await sessionToken(c.env.APP_PASSWORD), {
+		httpOnly: true,
+		secure: new URL(c.req.url).protocol === 'https:',
+		sameSite: 'Lax',
+		path: '/',
+		maxAge: COOKIE_MAX_AGE,
+	})
+}
+
 app.post('/api/login', async (c) => {
 	const body = await c.req.json<{ password?: string }>().catch(() => ({} as { password?: string }))
 	const password = String(body.password ?? '')
@@ -47,27 +57,27 @@ app.post('/api/login', async (c) => {
 	if (!(await safeEqual(password, c.env.APP_PASSWORD))) {
 		return c.json({ error: 'Feil passord' }, 401)
 	}
-	setCookie(c, COOKIE, await sessionToken(c.env.APP_PASSWORD), {
-		httpOnly: true,
-		secure: new URL(c.req.url).protocol === 'https:',
-		sameSite: 'Lax',
-		path: '/',
-		maxAge: COOKIE_MAX_AGE,
-	})
+	await setSessionCookie(c)
 	return c.json({ ok: true })
 })
 
 app.post('/api/logout', (c) => {
 	deleteCookie(c, COOKIE, { path: '/' })
+	deleteCookie(c, IDENTITY_COOKIE, { path: '/' })
 	return c.json({ ok: true })
 })
 
-// Alt under her krever innlogging
+// Alt under her krever innlogging.
+// Gyldig passord-økt ELLER gyldig PIN-identitet (signert med passordet, så passordbytte logger ut begge) gir tilgang.
+// Økten fornyes ved bruk, slik at man ikke må taste passordet på nytt så lenge appen brukes.
 app.use('/api/*', async (c, next) => {
+	if (!c.env.APP_PASSWORD) return c.json({ error: 'Ikke innlogget' }, 401)
 	const cookie = getCookie(c, COOKIE)
-	if (!c.env.APP_PASSWORD || !cookie || !(await safeEqual(cookie, await sessionToken(c.env.APP_PASSWORD)))) {
+	const sessionOk = !!cookie && (await safeEqual(cookie, await sessionToken(c.env.APP_PASSWORD)))
+	if (!sessionOk && !(await getIdentity(c))) {
 		return c.json({ error: 'Ikke innlogget' }, 401)
 	}
+	if (c.req.path === '/api/config' || !sessionOk) await setSessionCookie(c)
 	await next()
 })
 
