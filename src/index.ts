@@ -669,24 +669,34 @@ function searchQueries(title: string): string[] {
 	return [...new Set(out.map((x) => x.trim()).filter((x) => x.length >= 2))].slice(0, 3)
 }
 
-// Kontrollert match: kandidater fra TMDB (inkl. alternative titler) godtas bare hvis år (±2) og regissør stemmer
+// Kontrollert match: kandidater fra TMDB (inkl. alternative titler) godtas bare hvis utgivelsesår (±2) og regissør stemmer.
+// Mangler CLZ regissør, godtas bare lik tittel med nøyaktig samme år, og treffet merkes «fuzzy».
 async function verifiedMatch(c: Ctx, title: string, year: number, director: string | null, currentId: number | null): Promise<Match | null> {
-	if (!director || !year) return null
+	if (!year) return null
+	const yearOf = (r: any) => Number((r.release_date ?? '').slice(0, 4)) || 0
+	const queries = searchQueries(title)
 	const ids: number[] = currentId ? [currentId] : []
-	for (const q of searchQueries(title)) {
-		const list = (await tmdb(c, '/search/movie', { query: q, language: 'en-US', include_adult: 'false' })).results ?? []
-		for (const r of list.slice(0, 5)) {
-			const y = Number((r.release_date ?? '').slice(0, 4)) || 0
-			if (y && Math.abs(y - year) <= 2 && !ids.includes(r.id)) ids.push(r.id)
-		}
-		if (ids.length >= 3) break
+	const add = (list: any[]) => {
+		for (const r of list.slice(0, 5)) if (Math.abs(yearOf(r) - year) <= 2 && yearOf(r) && !ids.includes(r.id)) ids.push(r.id)
 	}
+	// Første søk begrenses til årstallet, så nyinnspillinger og andre år ikke overstyrer riktig film
+	add((await tmdb(c, '/search/movie', { query: queries[0], language: 'en-US', include_adult: 'false', primary_release_year: String(year) })).results ?? [])
+	for (const q of queries) {
+		if (ids.length >= 3) break
+		add((await tmdb(c, '/search/movie', { query: q, language: 'en-US', include_adult: 'false' })).results ?? [])
+	}
+	const wanted = new Set(queries.map(norm))
 	for (const id of ids.slice(0, 3)) {
 		const m = await tmdb(c, `/movie/${id}`, { language: 'en-US', append_to_response: 'credits' })
-		const y = Number((m.release_date ?? '').slice(0, 4)) || 0
+		const y = yearOf(m)
+		if (!y || Math.abs(y - year) > 2) continue
 		const crew = ((m.credits?.crew ?? []) as any[]).filter((p) => p.job === 'Director').map((p) => p.name as string)
-		if (y && Math.abs(y - year) <= 2 && directorsMatch(director, crew))
-			return { tmdb_id: id, tmdb_title: m.title ?? null, poster_path: m.poster_path ?? null, media_type: 'movie', match: 'exact' }
+		const hit = (match: 'exact' | 'fuzzy'): Match => ({ tmdb_id: id, tmdb_title: m.title ?? null, poster_path: m.poster_path ?? null, media_type: 'movie', match })
+		if (director) {
+			if (directorsMatch(director, crew)) return hit('exact')
+		} else if (y === year && (wanted.has(norm(m.title ?? '')) || wanted.has(norm(m.original_title ?? '')))) {
+			return hit('fuzzy')
+		}
 	}
 	return null
 }
