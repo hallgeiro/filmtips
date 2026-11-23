@@ -129,7 +129,8 @@ Sammendrag av oppsett, arkitektur og utviklingsarbeid. Filmtips er en ikke-komme
 
 36. Visninger: måte og dato er alltid valgfrie. «＋ Legg til visning» lager en tom visning (ingen forhåndsutfylt dato), og hver rad har «I dag» / «Tøm dato». Etter at man gir en ny karakter og ikke har noen visninger, spørres man (valgfritt) «Hvordan så du den?» med valg (Kino, Streaming …) og «Hopp over». Å velge lager en visning uten dato.
 
-37. «Sett» er en egen, festet liste øverst i Lister-fanen (kort med øye-ikon, antall filmer, med karakter og snitt for innlogget bruker). Trykk på kortet for å åpne Sett-visningen (velg bruker, filtre, sortering), med «← Alle lister» tilbake. Det er ingen egen fane i hovedmenyen. `#tab-seen` ligger inni `#tab-lists`, og `listsSub` styrer hva som vises.
+37. «Sett» er en egen, festet liste nederst i Lister-fanen (kort med øye-ikon, antall filmer, med karakter og snitt for innlogget bruker). Trykk på kortet for å åpne Sett-visningen (velg bruker, filtre, sortering), med «← Alle lister» tilbake. Det er ingen egen fane i hovedmenyen. `#tab-seen` ligger inni `#tab-lists`, og `listsSub` styrer hva som vises.
+38. Plakatene på listekortene overlappet teksten (4 plakater i en for smal kolonne). Nå maks 3 plakater i en bredere kolonne (`w-24`). «Sett»-kortet ligger nå nederst i Lister, etter de vanlige listene.
 
 ## Kjente begrensninger og mulige neste steg
 

@@ -1055,10 +1055,10 @@ async function loadLists() {
 		$('#lists-status').textContent = results.length ? '' : 'Ingen lister ennå. Lag den første!';
 		const ratedSeen = mineSeen.filter((m) => m.rating);
 		const avgSeen = ratedSeen.length ? Math.round((ratedSeen.reduce((a, m) => a + m.rating, 0) / ratedSeen.length) * 10) / 10 : null;
-		const seenPosters = mineSeen.filter((m) => m.poster_path).slice(0, 4).map((m) => m.poster_path);
+		const seenPosters = mineSeen.filter((m) => m.poster_path).slice(0, 3).map((m) => m.poster_path);
 		const seenCard = `
 			<button data-list-seen class="w-full text-left bg-slate-800 rounded-xl p-3 hover:ring-2 hover:ring-amber-400 flex gap-3 ring-1 ring-slate-700">
-				<div class="flex -space-x-3 shrink-0 items-center w-20 ${seenPosters.length ? '' : 'justify-center text-slate-300'}">
+				<div class="flex -space-x-3 shrink-0 items-center w-24 ${seenPosters.length ? '' : 'justify-center text-slate-300'}">
 					${seenPosters.length ? seenPosters.map((pp) => `<img src="${IMG}w92${esc(pp)}" alt="" loading="lazy" class="w-10 aspect-[2/3] object-cover rounded border border-slate-800" />`).join('') : EYE.replace('h-4 w-4', 'h-8 w-8')}
 				</div>
 				<div class="min-w-0">
@@ -1067,12 +1067,12 @@ async function loadLists() {
 					<p class="text-sm text-slate-300 mt-1">Alle filmer du har sett, med karakter, hvordan og når. Du kan også se de andres.</p>
 				</div>
 			</button>`;
-		$('#lists-list').innerHTML = seenCard + results
+		$('#lists-list').innerHTML = results
 			.map(
 				(l) => `
 			<button data-list="${l.id}" class="w-full text-left bg-slate-800 rounded-xl p-3 hover:ring-2 hover:ring-amber-400 flex gap-3">
-				<div class="flex -space-x-3 shrink-0 items-center w-20 ${l.posters.length ? '' : 'justify-center text-3xl'}">
-					${l.posters.length ? l.posters.map((pp) => `<img src="${IMG}w92${esc(pp)}" alt="" loading="lazy" class="w-10 aspect-[2/3] object-cover rounded border border-slate-800" />`).join('') : '📋'}
+				<div class="flex -space-x-3 shrink-0 items-center w-24 ${l.posters.length ? '' : 'justify-center text-3xl'}">
+					${l.posters.length ? l.posters.slice(0, 3).map((pp) => `<img src="${IMG}w92${esc(pp)}" alt="" loading="lazy" class="w-10 aspect-[2/3] object-cover rounded border border-slate-800" />`).join('') : '📋'}
 				</div>
 				<div class="min-w-0">
 					<div class="font-semibold">${esc(l.title)}</div>
