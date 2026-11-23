@@ -26,7 +26,7 @@
 
 	// Navnene i nedtrekkslisten (kommaseparert). Endre til familie og venner.
 	"vars": {
-		"USERS": "Mamma,Pappa,Kari,Ola,Bestemor"
+		"USERS": "Hallgeir,Eirik,Daniel"
 	}
 
 	// Hemmeligheter (ikke her!):
