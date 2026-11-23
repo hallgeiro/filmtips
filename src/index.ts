@@ -37,7 +37,10 @@ async function sessionToken(password: string): Promise<string> {
 app.post('/api/login', async (c) => {
 	const body = await c.req.json<{ password?: string }>().catch(() => ({} as { password?: string }))
 	const password = String(body.password ?? '')
-	if (!c.env.APP_PASSWORD || !(await safeEqual(password, c.env.APP_PASSWORD))) {
+	if (!c.env.APP_PASSWORD) {
+		return c.json({ error: 'Serverfeil: secret APP_PASSWORD er ikke satt på denne Workeren' }, 500)
+	}
+	if (!(await safeEqual(password, c.env.APP_PASSWORD))) {
 		return c.json({ error: 'Feil passord' }, 401)
 	}
 	setCookie(c, COOKIE, await sessionToken(c.env.APP_PASSWORD), {
