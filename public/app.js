@@ -854,6 +854,8 @@ function setTab(tab) {
 	$('#tab-feed').classList.toggle('hidden', tab !== 'feed');
 	$('#tab-library').classList.toggle('hidden', tab !== 'library');
 	$('#tab-nights').classList.toggle('hidden', tab !== 'nights');
+	$('#tab-lists').classList.toggle('hidden', tab !== 'lists');
+	if (tab === 'lists') loadLists();
 	if (tab === 'nights') loadNights();
 	if (tab === 'feed') loadFeed();
 	if (tab === 'library') loadLibrary(true);
@@ -1001,6 +1003,247 @@ async function threadSubmit(e) {
 		alert(err.message);
 	}
 }
+
+/* ---------- Filmlister ---------- */
+let listId = null;
+let currentList = null;
+let listKeys = new Set(); // "media_type:tmdb_id" for filmer som allerede er i åpen liste
+let listTimer;
+const INPUT_CLS = 'w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-amber-400';
+
+function listFormHtml(v = {}) {
+	return `<form data-list-form="${v.id ?? ''}" class="bg-slate-800 rounded-xl p-3 space-y-2">
+		<input name="title" maxlength="100" value="${esc(v.title ?? '')}" placeholder="Navn, f.eks. Favorittfilmer eller Film noir" autocomplete="off" class="${INPUT_CLS}" />
+		<input name="description" maxlength="500" value="${esc(v.description ?? '')}" placeholder="Beskrivelse (valgfri)" autocomplete="off" class="${INPUT_CLS}" />
+		<label class="flex items-center gap-2 text-sm text-slate-300"><input type="checkbox" name="ranked" ${v.ranked ? 'checked' : ''} /> Rangert liste (nummerert, du bestemmer rekkefølgen)</label>
+		<p data-list-err class="text-red-400 text-sm hidden"></p>
+		<div class="flex gap-2">
+			<button class="flex-1 rounded-lg bg-amber-400 text-slate-900 font-semibold py-2">Lagre</button>
+			<button type="button" data-list-cancel class="flex-1 rounded-lg bg-slate-900 border border-slate-700 py-2 text-sm">Avbryt</button>
+		</div>
+	</form>`;
+}
+
+async function loadLists() {
+	if (listId) return openList(listId);
+	$('#lists-view').classList.remove('hidden');
+	$('#list-detail').classList.add('hidden');
+	$('#lists-status').textContent = 'Henter…';
+	try {
+		const { results } = await api('/api/lists');
+		$('#lists-status').textContent = results.length ? '' : 'Ingen lister ennå. Lag den første!';
+		$('#lists-list').innerHTML = results
+			.map(
+				(l) => `
+			<button data-list="${l.id}" class="w-full text-left bg-slate-800 rounded-xl p-3 hover:ring-2 hover:ring-amber-400 flex gap-3">
+				<div class="flex -space-x-3 shrink-0 items-center w-20 ${l.posters.length ? '' : 'justify-center text-3xl'}">
+					${l.posters.length ? l.posters.map((pp) => `<img src="${IMG}w92${esc(pp)}" alt="" loading="lazy" class="w-10 aspect-[2/3] object-cover rounded border border-slate-800" />`).join('') : '📋'}
+				</div>
+				<div class="min-w-0">
+					<div class="font-semibold">${esc(l.title)}</div>
+					<div class="text-sm text-slate-400">av ${esc(l.username)} · ${l.item_count} ${l.item_count === 1 ? 'film' : 'filmer'}${l.ranked ? ' · rangert' : ''}</div>
+					${l.description ? `<p class="text-sm text-slate-300 mt-1 break-words">${esc(l.description)}</p>` : ''}
+				</div>
+			</button>`,
+			)
+			.join('');
+	} catch (err) {
+		$('#lists-status').textContent = err.message;
+	}
+}
+
+$('#list-new').addEventListener('click', () => {
+	if (!me) return alert('Velg navnet ditt først.');
+	const box = $('#list-create');
+	box.innerHTML = listFormHtml();
+	box.classList.remove('hidden');
+	box.querySelector('[name=title]').focus();
+});
+
+$('#lists-list').addEventListener('click', (e) => {
+	const b = e.target.closest('[data-list]');
+	if (b) openList(Number(b.dataset.list));
+});
+
+$('#list-back').addEventListener('click', () => {
+	listId = null;
+	$('#list-results').innerHTML = '';
+	$('#list-q').value = '';
+	loadLists();
+});
+
+async function openList(id) {
+	listId = id;
+	$('#lists-view').classList.add('hidden');
+	$('#list-detail').classList.remove('hidden');
+	try {
+		const { list, items, can_edit } = await api(`/api/lists/${id}`);
+		currentList = list;
+		listKeys = new Set(items.map((i) => `${i.media_type}:${i.tmdb_id}`));
+		$('#list-head').innerHTML = `
+			<h2 class="text-xl font-bold break-words">${esc(list.title)}</h2>
+			<div class="text-sm text-slate-400">av ${esc(list.username)} · ${items.length} ${items.length === 1 ? 'film' : 'filmer'}${list.ranked ? ' · rangert' : ''}</div>
+			${list.description ? `<p class="text-sm text-slate-300 mt-1 break-words">${esc(list.description)}</p>` : ''}
+			${can_edit ? `<div class="mt-2 flex gap-4 text-sm"><button data-list-edit class="underline text-slate-300 hover:text-white">Rediger</button><button data-list-delete class="underline text-red-400">Slett liste</button></div>` : ''}`;
+		$('#list-add').classList.toggle('hidden', !can_edit);
+		$('#list-items').innerHTML = items.length
+			? items
+					.map(
+						(m, i) => `
+			<div class="flex items-center gap-2 bg-slate-800 rounded-xl p-2">
+				${list.ranked ? `<div class="w-7 shrink-0 text-center text-amber-300 font-semibold">${i + 1}</div>` : ''}
+				<button data-movie='${esc(JSON.stringify({ id: m.tmdb_id, media_type: m.media_type, title: m.title, year: m.year, poster_path: m.poster_path }))}' class="list-movie flex items-center gap-3 flex-1 min-w-0 text-left">
+					<div class="w-10 shrink-0 aspect-[2/3] bg-slate-700 rounded overflow-hidden">${posterTag(m.poster_path, m.title, 'w92')}</div>
+					<div class="min-w-0">
+						<div class="text-sm font-medium leading-tight">${esc(m.title)}</div>
+						<div class="text-xs text-slate-400">${esc(m.year ?? '')}${m.media_type === 'tv' ? ' · TV' : ''}</div>
+						${libBadge(m.library_formats)}
+					</div>
+				</button>
+				${can_edit ? `<div class="flex shrink-0 items-center gap-1">
+					${list.ranked ? `<button data-item-move="${m.id}" data-dir="up" ${i === 0 ? 'disabled' : ''} class="px-2 py-1 text-slate-300 disabled:opacity-25" aria-label="Flytt opp">▲</button><button data-item-move="${m.id}" data-dir="down" ${i === items.length - 1 ? 'disabled' : ''} class="px-2 py-1 text-slate-300 disabled:opacity-25" aria-label="Flytt ned">▼</button>` : ''}
+					<button data-item-del="${m.id}" class="px-2 py-1 text-red-400" aria-label="Fjern fra listen">✕</button>
+				</div>` : ''}
+			</div>`,
+					)
+					.join('')
+			: `<p class="text-sm text-slate-400">${can_edit ? 'Ingen filmer ennå. Søk over for å legge til.' : 'Ingen filmer i listen ennå.'}</p>`;
+	} catch (err) {
+		listId = null;
+		alert(err.message);
+		loadLists();
+	}
+}
+
+// Skjema: opprett, rediger, avbryt
+$('#tab-lists').addEventListener('submit', async (e) => {
+	const form = e.target.closest('[data-list-form]');
+	if (!form) return;
+	e.preventDefault();
+	const errEl = form.querySelector('[data-list-err]');
+	errEl.classList.add('hidden');
+	const f = form.elements; // merk: form.title er attributtet «title», ikke feltet
+	const body = { title: f.title.value, description: f.description.value, ranked: f.ranked.checked };
+	try {
+		if (form.dataset.listForm) {
+			await api(`/api/lists/${form.dataset.listForm}`, { method: 'PATCH', body: JSON.stringify(body) });
+			$('#list-edit').classList.add('hidden');
+			openList(Number(form.dataset.listForm));
+		} else {
+			const r = await api('/api/lists', { method: 'POST', body: JSON.stringify({ ...body, username: me }) });
+			$('#list-create').classList.add('hidden');
+			openList(r.id);
+		}
+	} catch (err) {
+		errEl.textContent = err.message;
+		errEl.classList.remove('hidden');
+	}
+});
+
+$('#tab-lists').addEventListener('click', async (e) => {
+	if (e.target.closest('[data-list-cancel]')) {
+		$('#list-create').classList.add('hidden');
+		$('#list-edit').classList.add('hidden');
+		return;
+	}
+	if (e.target.closest('[data-list-edit]')) {
+		$('#list-edit').innerHTML = listFormHtml(currentList);
+		$('#list-edit').classList.remove('hidden');
+		return;
+	}
+	if (e.target.closest('[data-list-delete]')) {
+		if (!confirm(`Slette listen «${currentList.title}»?`)) return;
+		try {
+			await api(`/api/lists/${listId}`, { method: 'DELETE' });
+			listId = null;
+			loadLists();
+		} catch (err) {
+			alert(err.message);
+		}
+		return;
+	}
+	const del = e.target.closest('[data-item-del]');
+	if (del) {
+		try {
+			await api(`/api/lists/${listId}/items/${del.dataset.itemDel}`, { method: 'DELETE' });
+			openList(listId);
+		} catch (err) {
+			alert(err.message);
+		}
+		return;
+	}
+	const mv = e.target.closest('[data-item-move]');
+	if (mv) {
+		try {
+			await api(`/api/lists/${listId}/items/${mv.dataset.itemMove}/move`, { method: 'POST', body: JSON.stringify({ direction: mv.dataset.dir }) });
+			openList(listId);
+		} catch (err) {
+			alert(err.message);
+		}
+		return;
+	}
+	const add = e.target.closest('[data-list-add]');
+	if (add) {
+		add.disabled = true;
+		try {
+			await api(`/api/lists/${listId}/items`, { method: 'POST', body: add.dataset.listAdd });
+			add.textContent = '✓ Lagt til';
+			openList(listId);
+		} catch (err) {
+			add.disabled = false;
+			alert(err.message);
+		}
+		return;
+	}
+	const mov = e.target.closest('.list-movie');
+	if (mov) openMovie(JSON.parse(mov.dataset.movie));
+});
+
+// Søk i både biblioteket og TMDB når man legger til filmer
+function listResultRow(m, source) {
+	const key = `${m.media_type}:${m.tmdb_id}`;
+	const already = listKeys.has(key);
+	const data = esc(JSON.stringify({ tmdb_id: m.tmdb_id, media_type: m.media_type, title: m.title, year: m.year || null, poster_path: m.poster_path }));
+	const action = !m.tmdb_id
+		? '<span class="shrink-0 text-xs text-slate-500">ikke i TMDB</span>'
+		: already
+			? '<span class="shrink-0 text-xs text-emerald-300">✓ I listen</span>'
+			: `<button data-list-add='${data}' class="shrink-0 rounded-full bg-amber-400 text-slate-900 text-sm font-semibold px-3 py-1">＋ Legg til</button>`;
+	const extra = source === 'lib' ? `<div class="text-xs text-emerald-300">📀 ${esc(String(m.formats || '').split('|').map(fmtLabel).join(' · '))}</div>` : '';
+	return `<div class="flex items-center gap-3 bg-slate-800 rounded-xl p-2">
+		<div class="w-10 shrink-0 aspect-[2/3] bg-slate-700 rounded overflow-hidden">${posterTag(m.poster_path, m.title, 'w92')}</div>
+		<div class="min-w-0 flex-1">
+			<div class="text-sm font-medium leading-tight">${esc(m.title)}</div>
+			<div class="text-xs text-slate-400">${esc(m.year ?? '')}${m.media_type === 'tv' ? ' · TV' : ''}</div>
+			${extra}
+		</div>
+		${action}
+	</div>`;
+}
+
+$('#list-q').addEventListener('input', (e) => {
+	clearTimeout(listTimer);
+	const q = e.target.value.trim();
+	if (q.length < 2) {
+		$('#list-results').innerHTML = '';
+		return;
+	}
+	listTimer = setTimeout(async () => {
+		$('#list-results').innerHTML = '<p class="text-sm text-slate-400">Søker…</p>';
+		const [lib, tmdb] = await Promise.allSettled([
+			api('/api/library?limit=8&q=' + encodeURIComponent(q)),
+			api('/api/search?type=multi&q=' + encodeURIComponent(q)),
+		]);
+		const libRows = lib.status === 'fulfilled' ? lib.value.results.map((m) => ({ ...m, title: m.tmdb_title || m.title })) : [];
+		const tmdbRows = tmdb.status === 'fulfilled' ? tmdb.value.results.map((m) => ({ ...m, tmdb_id: m.id })) : [];
+		const section = (title, rows, source, empty) =>
+			`<h4 class="text-xs font-semibold text-slate-400 mt-2">${title}</h4>` +
+			(rows.length ? rows.map((m) => listResultRow(m, source)).join('') : `<p class="text-sm text-slate-500">${empty}</p>`);
+		$('#list-results').innerHTML =
+			section('📀 Fra biblioteket', libRows, 'lib', lib.status === 'fulfilled' ? 'Ingen treff i biblioteket.' : 'Kunne ikke søke i biblioteket.') +
+			section('🌐 Fra TMDB', tmdbRows, 'tmdb', tmdb.status === 'fulfilled' ? 'Ingen treff i TMDB.' : 'Kunne ikke søke i TMDB.');
+	}, 350);
+});
 
 /* ---------- Feed ---------- */
 async function loadFeed() {

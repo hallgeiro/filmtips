@@ -25,6 +25,31 @@ CREATE TABLE IF NOT EXISTS rec_comments (
 );
 CREATE INDEX IF NOT EXISTS idx_rec_comments_rec ON rec_comments (rec_id, created_at);
 
+-- Filmlister: brukerne lager egne lister (f.eks. favoritter, film noir), rangerte eller ikke
+CREATE TABLE IF NOT EXISTS film_lists (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  username    TEXT    NOT NULL,
+  title       TEXT    NOT NULL,
+  description TEXT,
+  ranked      INTEGER NOT NULL DEFAULT 0,              -- 1 = rangert (nummerert)
+  created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+  updated_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS film_list_items (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  list_id    INTEGER NOT NULL,                         -- film_lists.id
+  tmdb_id    INTEGER NOT NULL,
+  media_type TEXT    NOT NULL DEFAULT 'movie',         -- 'movie' eller 'tv'
+  title      TEXT    NOT NULL,
+  year       TEXT,
+  poster_path TEXT,
+  position   INTEGER NOT NULL,
+  added_at   TEXT    NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (list_id, tmdb_id, media_type)
+);
+CREATE INDEX IF NOT EXISTS idx_film_lists_user ON film_lists (username);
+CREATE INDEX IF NOT EXISTS idx_film_list_items_list ON film_list_items (list_id, position);
+
 -- PIN per bruker (PBKDF2-hash, aldri klartekst). Låser i 15 min etter 5 feil forsøk.
 CREATE TABLE IF NOT EXISTS user_pins (
   username        TEXT PRIMARY KEY,

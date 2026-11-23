@@ -43,11 +43,12 @@
 		<span id="import-status" class="text-amber-300"></span>
 	</div>
 
-	<nav class="flex gap-2 mb-4" role="tablist">
-			<button data-tab="search" class="tab flex-1 rounded-lg py-2 px-1 text-xs sm:text-sm font-medium">🔍 Søk</button>
-			<button data-tab="feed" class="tab flex-1 rounded-lg py-2 px-1 text-xs sm:text-sm font-medium">⭐ Anbefalinger</button>
-			<button data-tab="library" class="tab flex-1 rounded-lg py-2 px-1 text-xs sm:text-sm font-medium">📀 Bibliotek</button>
-			<button data-tab="nights" class="tab flex-1 rounded-lg py-2 px-1 text-xs sm:text-sm font-medium">🎬 Filmkveld</button>
+	<nav class="flex gap-2 mb-4 overflow-x-auto" role="tablist">
+			<button data-tab="search" class="tab flex-1 shrink-0 whitespace-nowrap rounded-lg py-2 px-3 text-xs sm:text-sm font-medium">🔍 Søk</button>
+			<button data-tab="feed" class="tab flex-1 shrink-0 whitespace-nowrap rounded-lg py-2 px-3 text-xs sm:text-sm font-medium">⭐ Anbefalinger</button>
+			<button data-tab="library" class="tab flex-1 shrink-0 whitespace-nowrap rounded-lg py-2 px-3 text-xs sm:text-sm font-medium">📀 Bibliotek</button>
+			<button data-tab="lists" class="tab flex-1 shrink-0 whitespace-nowrap rounded-lg py-2 px-3 text-xs sm:text-sm font-medium">📋 Lister</button>
+			<button data-tab="nights" class="tab flex-1 shrink-0 whitespace-nowrap rounded-lg py-2 px-3 text-xs sm:text-sm font-medium">🎬 Filmkveld</button>
 		</nav>
 
 		<section id="tab-search">
@@ -103,6 +104,26 @@
 				</div>
 				<h3 class="font-semibold mt-5 mb-2">Ønsker</h3>
 				<div id="night-wishes" class="space-y-2"></div>
+			</div>
+		</section>
+
+		<section id="tab-lists" class="hidden">
+			<div id="lists-view">
+				<button id="list-new" class="mb-3 w-full rounded-lg bg-emerald-600 py-3 text-sm font-semibold hover:bg-emerald-500">➕ Ny liste</button>
+				<div id="list-create" class="hidden mb-3"></div>
+				<p id="lists-status" class="text-slate-400 text-sm"></p>
+				<div id="lists-list" class="space-y-3"></div>
+			</div>
+			<div id="list-detail" class="hidden">
+				<button id="list-back" class="text-sm text-slate-400 hover:text-white mb-3">← Alle lister</button>
+				<div id="list-head"></div>
+				<div id="list-edit" class="hidden mt-3"></div>
+				<div id="list-add" class="hidden mt-4">
+					<input id="list-q" type="search" autocomplete="off" placeholder="Legg til film: søk i biblioteket og TMDB…"
+						class="w-full rounded-lg bg-slate-800 border border-slate-700 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-400" />
+					<div id="list-results" class="mt-2 space-y-2"></div>
+				</div>
+				<div id="list-items" class="mt-4 space-y-2"></div>
 			</div>
 		</section>
 

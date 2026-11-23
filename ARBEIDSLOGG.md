@@ -18,7 +18,7 @@ Sammendrag av oppsett, arkitektur og utviklingsarbeid. Filmtips er en ikke-komme
 | Fil | Innhold |
 | --- | --- |
 | `wrangler.jsonc` | Worker-konfig, D1-binding, assets (`run_worker_first: ["/api/*"]`), custom domain, `USERS` |
-| `schema.sql` | Tabellene `recommendations`, `rec_comments`, `user_pins`, `library` (inkl. `media_type`, `collection`), `movie_nights`, `wishes`, `wish_votes` + indekser |
+| `schema.sql` | Tabellene `recommendations`, `rec_comments`, `film_lists`, `film_list_items`, `user_pins`, `library` (inkl. `media_type`, `collection`), `movie_nights`, `wishes`, `wish_votes` + indekser |
 | `ARBEIDSLOGG.md` | Denne filen: struktur, arbeidsmåte og status |
 | `src/index.ts` | Hele backend (Hono): auth, TMDB-søk, anbefalinger, bibliotek, admin |
 | `public/index.html` | UI: login, faner (Søk / Anbefalinger / Bibliotek), modaler |
@@ -57,7 +57,7 @@ Sammendrag av oppsett, arkitektur og utviklingsarbeid. Filmtips er en ikke-komme
 
 - `GET /api/search?q=&type=multi` – TMDB-søk, støtter IMDb-kode
 - `GET /api/movie/:id/providers`, `GET /api/tv/:id/providers`
-- `GET/POST/DELETE /api/recommendations`
+- `GET/POST/DELETE /api/recommendations`, `/api/lists` (+ `/api/lists/:id/items`)
 - `GET /api/library`, `GET /api/library/facets`
 - `POST /api/admin/library/import`, `.../rematch` (kryssjekk), `.../add`
 - `PATCH /api/admin/library/:id`
@@ -98,6 +98,8 @@ Sammendrag av oppsett, arkitektur og utviklingsarbeid. Filmtips er en ikke-komme
 20. Liste/galleri-valget gjelder nå også Søk-fanen (egen knapp ved søkefeltet). Valget er felles for Søk og Bibliotek og huskes i localStorage.
 
 21. Kommentarer på anbefalinger: tabell `rec_comments` (opprettet i remote D1 før push). «💬 Kommenter» under hver anbefaling i Feed og i filmvinduet åpner en tråd. Alle innloggede kan kommentere alles anbefalinger (maks 500 tegn), slette egne (admin alle). Slettes en anbefaling, slettes kommentarene også. `schema.sql` er oppdatert.
+
+22. Filmlister: ny fane «Lister». Tabeller `film_lists` og `film_list_items` (opprettet i remote D1 før push). Brukerne lager lister (rangert eller ikke, med beskrivelse), alle ser alle, eieren/admin endrer. Filmer legges til via søk som slår opp i både biblioteket (`/api/library`) og TMDB (`/api/search`). Biblioteksfilmer uten TMDB-treff kan ikke legges i lister. Rangerte lister har ▲/▼ (`POST .../move`). Fanelinjen kan rulles sideveis.
 
 ## Kjente begrensninger og mulige neste steg
 

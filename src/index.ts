@@ -422,6 +422,163 @@ app.delete('/api/comments/:id', async (c) => {
 	return c.json({ ok: true, deleted: res.meta.changes })
 })
 
+/* ---------- Filmlister ---------- */
+
+const MAX_LIST_ITEMS = 200
+type ListRow = { id: number; username: string; title: string; description: string | null; ranked: number; created_at: string; updated_at: string }
+
+const getList = (c: Ctx, id: number) => c.env.DB.prepare(`SELECT * FROM film_lists WHERE id = ?`).bind(id).first<ListRow>()
+// Eier eller admin kan endre en liste
+async function canEditList(c: Ctx, list: ListRow): Promise<boolean> {
+	return (await isAdmin(c)) || (await getIdentity(c)) === list.username
+}
+const touchList = (c: Ctx, id: number) => c.env.DB.prepare(`UPDATE film_lists SET updated_at = datetime('now') WHERE id = ?`).bind(id).run()
+
+function listFields(b: { title?: unknown; description?: unknown; ranked?: unknown }): { title: string; description: string | null; ranked: number } | string {
+	const title = String(b.title ?? '').trim()
+	const description = String(b.description ?? '').trim()
+	if (!title) return 'Gi listen et navn'
+	if (title.length > 100) return 'Navnet er for langt (maks 100 tegn)'
+	if (description.length > 500) return 'Beskrivelsen er for lang (maks 500 tegn)'
+	return { title, description: description || null, ranked: b.ranked ? 1 : 0 }
+}
+
+app.get('/api/lists', async (c) => {
+	const { results } = await c.env.DB.prepare(
+		`SELECT l.*, (SELECT COUNT(*) FROM film_list_items i WHERE i.list_id = l.id) AS item_count
+		 FROM film_lists l ORDER BY l.updated_at DESC, l.id DESC LIMIT 200`,
+	).all<ListRow & { item_count: number }>()
+	// De fire første plakatene per liste, til forhåndsvisning
+	const { results: posters } = await c.env.DB.prepare(
+		`SELECT i.list_id, i.poster_path FROM film_list_items i
+		 WHERE i.poster_path IS NOT NULL
+		   AND (SELECT COUNT(*) FROM film_list_items j WHERE j.list_id = i.list_id AND j.poster_path IS NOT NULL AND j.position < i.position) < 4
+		 ORDER BY i.list_id, i.position`,
+	).all<{ list_id: number; poster_path: string }>()
+	const byList = new Map<number, string[]>()
+	for (const p of posters) byList.set(p.list_id, [...(byList.get(p.list_id) ?? []), p.poster_path])
+	return c.json({ results: results.map((l) => ({ ...l, posters: byList.get(l.id) ?? [] })) })
+})
+
+app.post('/api/lists', async (c) => {
+	const b = await c.req.json<any>().catch(() => null)
+	if (!b) return c.json({ error: 'Ugyldig JSON' }, 400)
+	const who = await actAs(c, b.username)
+	if ('error' in who) return c.json({ error: who.error }, who.status)
+	const f = listFields(b)
+	if (typeof f === 'string') return c.json({ error: f }, 400)
+	const res = await c.env.DB.prepare(`INSERT INTO film_lists (username, title, description, ranked) VALUES (?, ?, ?, ?)`)
+		.bind(who.user, f.title, f.description, f.ranked)
+		.run()
+	return c.json({ ok: true, id: res.meta.last_row_id }, 201)
+})
+
+app.get('/api/lists/:id', async (c) => {
+	const id = Number(c.req.param('id'))
+	if (!Number.isInteger(id)) return c.json({ error: 'Ugyldig forespørsel' }, 400)
+	const list = await getList(c, id)
+	if (!list) return c.json({ error: 'Listen finnes ikke' }, 404)
+	const { results } = await c.env.DB.prepare(
+		`SELECT i.id, i.tmdb_id, i.media_type, i.title, i.year, i.poster_path, i.position,
+		        (SELECT group_concat(l.formats, '|') FROM library l WHERE l.tmdb_id = i.tmdb_id AND l.media_type = i.media_type) AS library_formats
+		 FROM film_list_items i WHERE i.list_id = ? ORDER BY i.position, i.id`,
+	)
+		.bind(id)
+		.all()
+	return c.json({ list, items: results, can_edit: await canEditList(c, list), max_items: MAX_LIST_ITEMS })
+})
+
+app.patch('/api/lists/:id', async (c) => {
+	const id = Number(c.req.param('id'))
+	if (!Number.isInteger(id)) return c.json({ error: 'Ugyldig forespørsel' }, 400)
+	const list = await getList(c, id)
+	if (!list) return c.json({ error: 'Listen finnes ikke' }, 404)
+	if (!(await canEditList(c, list))) return c.json({ error: 'Bare eieren kan endre listen' }, 403)
+	const b = await c.req.json<any>().catch(() => null)
+	if (!b) return c.json({ error: 'Ugyldig JSON' }, 400)
+	const f = listFields(b)
+	if (typeof f === 'string') return c.json({ error: f }, 400)
+	await c.env.DB.prepare(`UPDATE film_lists SET title = ?, description = ?, ranked = ?, updated_at = datetime('now') WHERE id = ?`)
+		.bind(f.title, f.description, f.ranked, id)
+		.run()
+	return c.json({ ok: true })
+})
+
+app.delete('/api/lists/:id', async (c) => {
+	const id = Number(c.req.param('id'))
+	if (!Number.isInteger(id)) return c.json({ error: 'Ugyldig forespørsel' }, 400)
+	const list = await getList(c, id)
+	if (!list) return c.json({ ok: true, deleted: 0 })
+	if (!(await canEditList(c, list))) return c.json({ error: 'Bare eieren kan slette listen' }, 403)
+	await c.env.DB.batch([
+		c.env.DB.prepare(`DELETE FROM film_list_items WHERE list_id = ?`).bind(id),
+		c.env.DB.prepare(`DELETE FROM film_lists WHERE id = ?`).bind(id),
+	])
+	return c.json({ ok: true, deleted: 1 })
+})
+
+app.post('/api/lists/:id/items', async (c) => {
+	const id = Number(c.req.param('id'))
+	if (!Number.isInteger(id)) return c.json({ error: 'Ugyldig forespørsel' }, 400)
+	const list = await getList(c, id)
+	if (!list) return c.json({ error: 'Listen finnes ikke' }, 404)
+	if (!(await canEditList(c, list))) return c.json({ error: 'Bare eieren kan legge til filmer' }, 403)
+	const b = await c.req.json<any>().catch(() => null)
+	if (!b) return c.json({ error: 'Ugyldig JSON' }, 400)
+	const tmdb_id = Number(b.tmdb_id)
+	const title = String(b.title ?? '').trim()
+	const media_type = b.media_type === 'tv' ? 'tv' : 'movie'
+	const year = String(b.year ?? '').trim().slice(0, 4) || null
+	const poster_path = typeof b.poster_path === 'string' && /^\/[\w.-]+$/.test(b.poster_path) ? b.poster_path : null
+	if (!Number.isInteger(tmdb_id) || tmdb_id <= 0) return c.json({ error: 'Ugyldig film' }, 400)
+	if (!title || title.length > 200) return c.json({ error: 'Ugyldig tittel' }, 400)
+	const count = await c.env.DB.prepare(`SELECT COUNT(*) AS n, COALESCE(MAX(position), 0) AS maxpos FROM film_list_items WHERE list_id = ?`)
+		.bind(id)
+		.first<{ n: number; maxpos: number }>()
+	if ((count?.n ?? 0) >= MAX_LIST_ITEMS) return c.json({ error: `Listen er full (maks ${MAX_LIST_ITEMS} filmer)` }, 400)
+	const res = await c.env.DB.prepare(
+		`INSERT OR IGNORE INTO film_list_items (list_id, tmdb_id, media_type, title, year, poster_path, position) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+	)
+		.bind(id, tmdb_id, media_type, title, year, poster_path, (count?.maxpos ?? 0) + 1)
+		.run()
+	await touchList(c, id)
+	return c.json({ ok: true, added: res.meta.changes }, 201)
+})
+
+app.delete('/api/lists/:id/items/:itemId', async (c) => {
+	const id = Number(c.req.param('id'))
+	const itemId = Number(c.req.param('itemId'))
+	if (!Number.isInteger(id) || !Number.isInteger(itemId)) return c.json({ error: 'Ugyldig forespørsel' }, 400)
+	const list = await getList(c, id)
+	if (!list) return c.json({ error: 'Listen finnes ikke' }, 404)
+	if (!(await canEditList(c, list))) return c.json({ error: 'Bare eieren kan endre listen' }, 403)
+	await c.env.DB.prepare(`DELETE FROM film_list_items WHERE id = ? AND list_id = ?`).bind(itemId, id).run()
+	await touchList(c, id)
+	return c.json({ ok: true })
+})
+
+// Flytt en film ett steg opp eller ned
+app.post('/api/lists/:id/items/:itemId/move', async (c) => {
+	const id = Number(c.req.param('id'))
+	const itemId = Number(c.req.param('itemId'))
+	if (!Number.isInteger(id) || !Number.isInteger(itemId)) return c.json({ error: 'Ugyldig forespørsel' }, 400)
+	const list = await getList(c, id)
+	if (!list) return c.json({ error: 'Listen finnes ikke' }, 404)
+	if (!(await canEditList(c, list))) return c.json({ error: 'Bare eieren kan endre listen' }, 403)
+	const b = await c.req.json<{ direction?: string }>().catch(() => ({} as { direction?: string }))
+	const dir = b.direction === 'up' ? -1 : b.direction === 'down' ? 1 : 0
+	if (!dir) return c.json({ error: 'Ugyldig retning' }, 400)
+	const { results } = await c.env.DB.prepare(`SELECT id FROM film_list_items WHERE list_id = ? ORDER BY position, id`).bind(id).all<{ id: number }>()
+	const ids = results.map((r) => r.id)
+	const i = ids.indexOf(itemId)
+	const j = i + dir
+	if (i < 0 || j < 0 || j >= ids.length) return c.json({ ok: true })
+	;[ids[i], ids[j]] = [ids[j], ids[i]]
+	await c.env.DB.batch(ids.map((x, k) => c.env.DB.prepare(`UPDATE film_list_items SET position = ? WHERE id = ?`).bind(k + 1, x)))
+	await touchList(c, id)
+	return c.json({ ok: true })
+})
+
 /* ---------- Filmkveld ---------- */
 
 const MAX_WISHES = 3 // ønsker per person per kveld
