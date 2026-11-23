@@ -15,6 +15,16 @@ CREATE TABLE IF NOT EXISTS recommendations (
 CREATE INDEX IF NOT EXISTS idx_recommendations_created ON recommendations (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_recommendations_tmdb ON recommendations (tmdb_id);
 
+-- Kommentarer på andres (og egne) anbefalinger
+CREATE TABLE IF NOT EXISTS rec_comments (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  rec_id     INTEGER NOT NULL,                       -- recommendations.id
+  username   TEXT    NOT NULL,
+  body       TEXT    NOT NULL,
+  created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_rec_comments_rec ON rec_comments (rec_id, created_at);
+
 -- PIN per bruker (PBKDF2-hash, aldri klartekst). Låser i 15 min etter 5 feil forsøk.
 CREATE TABLE IF NOT EXISTS user_pins (
   username        TEXT PRIMARY KEY,

@@ -316,7 +316,7 @@ app.get('/api/recommendations', async (c) => {
 	const limit = Math.min(Math.max(Number(c.req.query('limit')) || 100, 1), 200)
 	const offset = Math.max(Number(c.req.query('offset')) || 0, 0)
 
-	const select = `SELECT r.*, (SELECT group_concat(l.formats, '|') FROM library l WHERE l.tmdb_id = r.tmdb_id AND l.media_type = 'movie') AS library_formats FROM recommendations r`
+	const select = `SELECT r.*, (SELECT group_concat(l.formats, '|') FROM library l WHERE l.tmdb_id = r.tmdb_id AND l.media_type = 'movie') AS library_formats, (SELECT COUNT(*) FROM rec_comments cm WHERE cm.rec_id = r.id) AS comment_count FROM recommendations r`
 	const stmt = tmdbId
 		? c.env.DB.prepare(`${select} WHERE r.tmdb_id = ? ORDER BY r.created_at DESC LIMIT ? OFFSET ?`).bind(Number(tmdbId), limit, offset)
 		: c.env.DB.prepare(`${select} ORDER BY r.created_at DESC, r.id DESC LIMIT ? OFFSET ?`).bind(limit, offset)
@@ -369,11 +369,56 @@ app.delete('/api/recommendations/:id', async (c) => {
 	// Admin kan slette alle. Andre kan bare slette egne (tillitsbasert på navn).
 	if (await isAdmin(c)) {
 		const res = await c.env.DB.prepare(`DELETE FROM recommendations WHERE id = ?`).bind(id).run()
+		if (res.meta.changes) await c.env.DB.prepare(`DELETE FROM rec_comments WHERE rec_id = ?`).bind(id).run()
 		return c.json({ ok: true, deleted: res.meta.changes })
 	}
 	const username = await getIdentity(c)
 	if (!username) return c.json({ error: 'Velg navnet ditt først' }, 403)
 	const res = await c.env.DB.prepare(`DELETE FROM recommendations WHERE id = ? AND username = ?`).bind(id, username).run()
+	if (res.meta.changes) await c.env.DB.prepare(`DELETE FROM rec_comments WHERE rec_id = ?`).bind(id).run()
+	return c.json({ ok: true, deleted: res.meta.changes })
+})
+
+/* ---------- Kommentarer på anbefalinger ---------- */
+
+const MAX_COMMENT = 500
+
+app.get('/api/recommendations/:id/comments', async (c) => {
+	const id = Number(c.req.param('id'))
+	if (!Number.isInteger(id)) return c.json({ error: 'Ugyldig forespørsel' }, 400)
+	const { results } = await c.env.DB.prepare(`SELECT id, rec_id, username, body, created_at FROM rec_comments WHERE rec_id = ? ORDER BY created_at, id`)
+		.bind(id)
+		.all()
+	return c.json({ results })
+})
+
+app.post('/api/recommendations/:id/comments', async (c) => {
+	const id = Number(c.req.param('id'))
+	if (!Number.isInteger(id)) return c.json({ error: 'Ugyldig forespørsel' }, 400)
+	const b = await c.req.json<{ username?: string; body?: string }>().catch(() => null)
+	if (!b) return c.json({ error: 'Ugyldig JSON' }, 400)
+	const who = await actAs(c, b.username)
+	if ('error' in who) return c.json({ error: who.error }, who.status)
+	const body = String(b.body ?? '').trim()
+	if (!body) return c.json({ error: 'Skriv en kommentar først' }, 400)
+	if (body.length > MAX_COMMENT) return c.json({ error: `Kommentaren er for lang (maks ${MAX_COMMENT} tegn)` }, 400)
+	const exists = await c.env.DB.prepare(`SELECT 1 AS ok FROM recommendations WHERE id = ?`).bind(id).first()
+	if (!exists) return c.json({ error: 'Anbefalingen finnes ikke lenger' }, 404)
+	await c.env.DB.prepare(`INSERT INTO rec_comments (rec_id, username, body) VALUES (?, ?, ?)`).bind(id, who.user, body).run()
+	return c.json({ ok: true }, 201)
+})
+
+// Egne kommentarer kan slettes av eier, alle av admin
+app.delete('/api/comments/:id', async (c) => {
+	const id = Number(c.req.param('id'))
+	if (!Number.isInteger(id)) return c.json({ error: 'Ugyldig forespørsel' }, 400)
+	if (await isAdmin(c)) {
+		const res = await c.env.DB.prepare(`DELETE FROM rec_comments WHERE id = ?`).bind(id).run()
+		return c.json({ ok: true, deleted: res.meta.changes })
+	}
+	const me = await getIdentity(c)
+	if (!me) return c.json({ error: 'Velg navnet ditt først' }, 403)
+	const res = await c.env.DB.prepare(`DELETE FROM rec_comments WHERE id = ? AND username = ?`).bind(id, me).run()
 	return c.json({ ok: true, deleted: res.meta.changes })
 })
 

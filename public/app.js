@@ -926,6 +926,82 @@ $('#results').addEventListener('click', (e) => {
 	if (btn) openMovie(JSON.parse(btn.dataset.movie));
 });
 
+/* ---------- Kommentarer på anbefalinger ---------- */
+function commentStrip(r) {
+	const n = Number(r.comment_count) || 0;
+	return `<div class="mt-1 px-1">
+		<button data-thread-toggle="${r.id}" class="text-xs text-slate-400 hover:text-amber-300">${commentLabel(n)}</button>
+		<div data-thread="${r.id}" class="hidden mt-2 space-y-2"></div>
+	</div>`;
+}
+
+const commentLabel = (n) => (n ? `💬 ${n} ${n === 1 ? 'kommentar' : 'kommentarer'}` : '💬 Kommenter');
+
+async function loadThread(recId, box) {
+	box.innerHTML = '<div class="text-xs text-slate-500">Henter…</div>';
+	try {
+		const { results } = await api(`/api/recommendations/${recId}/comments`);
+		box.innerHTML =
+			results
+				.map(
+					(cm) => `<div class="bg-slate-900 rounded-lg px-3 py-2 text-sm">
+						<div class="text-xs text-slate-400">${esc(cm.username)} · ${fmtDate(cm.created_at)}${cm.username === me || isAdmin ? ` <button data-cm-del="${cm.id}" class="ml-2 text-red-400 hover:underline">Slett</button>` : ''}</div>
+						<p class="text-slate-200 break-words whitespace-pre-line">${esc(cm.body)}</p>
+					</div>`,
+				)
+				.join('') +
+			`<form data-cm-form="${recId}" class="flex gap-2">
+				<input maxlength="500" placeholder="Skriv en kommentar…" autocomplete="off"
+					class="flex-1 min-w-0 rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400" />
+				<button class="rounded-lg bg-amber-400 text-slate-900 text-sm font-semibold px-3">Send</button>
+			</form>`;
+		for (const t of document.querySelectorAll(`[data-thread-toggle="${recId}"]`)) t.textContent = commentLabel(results.length);
+	} catch (err) {
+		box.innerHTML = `<div class="text-xs text-red-400">${esc(err.message)}</div>`;
+	}
+}
+
+// Klikk på åpne/lukk og slett. Returnerer true hvis klikket var for kommentarer.
+async function threadClick(e) {
+	const tog = e.target.closest('[data-thread-toggle]');
+	if (tog) {
+		const box = tog.parentElement.querySelector('[data-thread]');
+		const hiddenNow = box.classList.toggle('hidden');
+		if (!hiddenNow) await loadThread(tog.dataset.threadToggle, box);
+		return true;
+	}
+	const del = e.target.closest('[data-cm-del]');
+	if (del) {
+		if (!confirm('Slette kommentaren?')) return true;
+		const box = del.closest('[data-thread]');
+		try {
+			await api(`/api/comments/${del.dataset.cmDel}`, { method: 'DELETE' });
+			await loadThread(box.dataset.thread, box);
+		} catch (err) {
+			alert(err.message);
+		}
+		return true;
+	}
+	return false;
+}
+
+async function threadSubmit(e) {
+	const form = e.target.closest('[data-cm-form]');
+	if (!form) return;
+	e.preventDefault();
+	const box = form.closest('[data-thread]');
+	const input = form.querySelector('input');
+	const body = input.value.trim();
+	if (!body) return;
+	if (!me) return alert('Velg navnet ditt først.');
+	try {
+		await api(`/api/recommendations/${form.dataset.cmForm}/comments`, { method: 'POST', body: JSON.stringify({ username: me, body }) });
+		await loadThread(box.dataset.thread, box);
+	} catch (err) {
+		alert(err.message);
+	}
+}
+
 /* ---------- Feed ---------- */
 async function loadFeed() {
 	$('#feed-status').textContent = 'Henter…';
@@ -946,6 +1022,7 @@ async function loadFeed() {
 						${libBadge(r.library_formats)}
 					</div>
 				</button>
+				${commentStrip(r)}
 				${r.username === me || isAdmin ? `<button data-feed-del="${r.id}" class="absolute top-3 right-3 text-xs text-red-400 hover:underline">Slett</button>` : ''}
 			</div>`,
 			)
@@ -955,7 +1032,9 @@ async function loadFeed() {
 	}
 }
 
+$('#feed').addEventListener('submit', threadSubmit);
 $('#feed').addEventListener('click', async (e) => {
+	if (await threadClick(e)) return;
 	const del = e.target.closest('[data-feed-del]');
 	if (del) {
 		if (!confirm('Slette denne anbefalingen?')) return;
@@ -1085,6 +1164,7 @@ async function openMovie(movie) {
 							<div class="text-amber-300">${dice(r.rating)} <span class="text-slate-400">· ${esc(r.username)} · ${fmtDate(r.created_at)}</span>
 								${r.username === me || isAdmin ? `<button data-del="${r.id}" class="float-right text-xs text-red-400 hover:underline">Slett</button>` : ''}</div>
 							${r.comment ? `<p class="text-slate-300 mt-1 break-words">${esc(r.comment)}</p>` : ''}
+							${commentStrip(r)}
 						</div>`,
 					)
 					.join('')
@@ -1099,7 +1179,9 @@ async function openMovie(movie) {
 		$('#recs').textContent = 'Kunne ikke hente anbefalinger.';
 	}
 
+	$('#recs')?.addEventListener('submit', threadSubmit);
 	$('#recs')?.addEventListener('click', async (e) => {
+		if (await threadClick(e)) return;
 		const id = e.target.dataset.del;
 		if (!id || !confirm('Slette denne anbefalingen?')) return;
 		await api(`/api/recommendations/${id}?username=${encodeURIComponent(me)}`, { method: 'DELETE' });

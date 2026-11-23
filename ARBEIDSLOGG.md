@@ -18,7 +18,7 @@ Sammendrag av oppsett, arkitektur og utviklingsarbeid. Filmtips er en ikke-komme
 | Fil | Innhold |
 | --- | --- |
 | `wrangler.jsonc` | Worker-konfig, D1-binding, assets (`run_worker_first: ["/api/*"]`), custom domain, `USERS` |
-| `schema.sql` | Tabellene `recommendations`, `user_pins`, `library` (inkl. `media_type`, `collection`), `movie_nights`, `wishes`, `wish_votes` + indekser |
+| `schema.sql` | Tabellene `recommendations`, `rec_comments`, `user_pins`, `library` (inkl. `media_type`, `collection`), `movie_nights`, `wishes`, `wish_votes` + indekser |
 | `ARBEIDSLOGG.md` | Denne filen: struktur, arbeidsmåte og status |
 | `src/index.ts` | Hele backend (Hono): auth, TMDB-søk, anbefalinger, bibliotek, admin |
 | `public/index.html` | UI: login, faner (Søk / Anbefalinger / Bibliotek), modaler |
@@ -96,6 +96,8 @@ Sammendrag av oppsett, arkitektur og utviklingsarbeid. Filmtips er en ikke-komme
 19. Biblioteket: valg mellom bildegalleri og liste (knapp ▦/☰ ved søkefeltet, valget huskes i localStorage). Listevisning har liten plakat, tittel, år/format og regissør på én rad.
 
 20. Liste/galleri-valget gjelder nå også Søk-fanen (egen knapp ved søkefeltet). Valget er felles for Søk og Bibliotek og huskes i localStorage.
+
+21. Kommentarer på anbefalinger: tabell `rec_comments` (opprettet i remote D1 før push). «💬 Kommenter» under hver anbefaling i Feed og i filmvinduet åpner en tråd. Alle innloggede kan kommentere alles anbefalinger (maks 500 tegn), slette egne (admin alle). Slettes en anbefaling, slettes kommentarene også. `schema.sql` er oppdatert.
 
 ## Kjente begrensninger og mulige neste steg
 
