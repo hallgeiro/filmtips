@@ -254,11 +254,13 @@ function renderFormatChips() {
 }
 
 function renderDecades() {
-	const chip = (d, label) =>
-		`<button data-d="${d}" class="rounded-full px-3 py-1 text-xs ${lib.decade === d ? 'bg-amber-400 text-slate-900' : 'bg-slate-800 text-slate-300'}">${label}</button>`;
-	$('#lib-decades').innerHTML = lib.facets
-		? chip(0, 'Alle tiår') + lib.facets.map((f) => chip(f.decade, `${f.decade}-tallet`)).join('')
-		: '';
+	const sel = $('#lib-decades');
+	sel.classList.toggle('hidden', !lib.facets);
+	if (!lib.facets) return;
+	sel.innerHTML =
+		`<option value="0">Alle tiår</option>` +
+		lib.facets.map((f) => `<option value="${f.decade}">${f.decade}-tallet</option>`).join('');
+	sel.value = String(lib.decade);
 }
 
 function renderDirChip() {
@@ -365,10 +367,8 @@ $('#lib-sort').addEventListener('change', (e) => {
 	lib.sort = e.target.value;
 	loadLibrary(true);
 });
-$('#lib-decades').addEventListener('click', (e) => {
-	const b = e.target.closest('button');
-	if (!b) return;
-	lib.decade = Number(b.dataset.d);
+$('#lib-decades').addEventListener('change', (e) => {
+	lib.decade = Number(e.target.value);
 	loadLibrary(true);
 });
 $('#lib-dir').addEventListener('click', (e) => {

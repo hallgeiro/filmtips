@@ -90,6 +90,8 @@ Sammendrag av oppsett, arkitektur og utviklingsarbeid. Filmtips er en ikke-komme
 
 17. Felles passord fjernet: kun navn + 6-sifret PIN. `POST /api/pin-login` logger inn, eller lager PIN (`create: true`) for navn uten PIN. `/api/*` krever gyldig PIN-identitet eller admin-cookie. `/api/login` og passord-cookien `filmtips_session` er borte. `APP_PASSWORD` er nå bare signeringsnøkkel for cookies (ikke fjern den). Risiko: første som velger et ledig navn får det; admin kan nullstille.
 
+18. Biblioteket: tiårsfilteret er en nedtrekksliste (`#lib-decades`) i stedet for knapper, for å spare plass på mobil.
+
 ## Kjente begrensninger og mulige neste steg
 
 - Rundt 30 titler må rettes manuelt med «Rett match» (IMDb-kode eller TMDB-lenke). Det koster ingen OMDb-oppslag.
