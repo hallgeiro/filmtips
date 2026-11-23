@@ -93,6 +93,8 @@ Sammendrag av oppsett, arkitektur og utviklingsarbeid. Filmtips er en ikke-komme
 
 18. Biblioteket: tiårsfilteret er en nedtrekksliste (`#lib-decades`) i stedet for knapper, for å spare plass på mobil.
 
+19. Biblioteket: valg mellom bildegalleri og liste (knapp ▦/☰ ved søkefeltet, valget huskes i localStorage). Listevisning har liten plakat, tittel, år/format og regissør på én rad.
+
 ## Kjente begrensninger og mulige neste steg
 
 - Rundt 30 titler må rettes manuelt med «Rett match» (IMDb-kode eller TMDB-lenke). Det koster ingen OMDb-oppslag.

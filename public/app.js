@@ -223,7 +223,7 @@ async function start() {
 
 /* ---------- Bibliotek (CLZ) ---------- */
 const FORMAT_FILTERS = ['4K UHD', 'Blu-ray', 'DVD', 'Digital'];
-const lib = { kind: 'physical', q: '', format: '', review: false, sort: 'title', decade: 0, director: '', facets: null, lastKey: null, offset: 0, total: 0, timer: null };
+const lib = { view: 'grid', kind: 'physical', q: '', format: '', review: false, sort: 'title', decade: 0, director: '', facets: null, lastKey: null, offset: 0, total: 0, timer: null };
 const firstDirector = (d) => String(d ?? '').split('|')[0].trim();
 
 const fmtLabel = (f) => (f === 'Digital' ? 'Fil' : f);
@@ -253,6 +253,19 @@ function renderFormatChips() {
 		(isAdmin ? chip('__review', '⚠ Å sjekke', lib.review) : '');
 }
 
+function loadLibView() {
+	try {
+		lib.view = localStorage.getItem('filmtips_lib_view') === 'list' ? 'list' : 'grid';
+	} catch {}
+}
+
+function applyLibView() {
+	const list = lib.view === 'list';
+	$('#lib-list').className = list ? 'flex flex-col gap-2 mt-3' : 'grid grid-cols-2 sm:grid-cols-3 gap-3 mt-3';
+	$('#lib-view').textContent = list ? '▦' : '☰';
+	$('#lib-view').title = list ? 'Vis som bildegalleri' : 'Vis som liste';
+}
+
 function renderDecades() {
 	const sel = $('#lib-decades');
 	sel.classList.toggle('hidden', !lib.facets);
@@ -276,6 +289,49 @@ function groupHeading(m) {
 	if (key === null || key === lib.lastKey) return '';
 	lib.lastKey = key;
 	return `<h3 class="col-span-full text-sm font-semibold text-amber-300 mt-3 first:mt-0">${esc(key)}</h3>`;
+}
+
+function libItemHtml(m) {
+	const list = lib.view === 'list';
+	const movieAttr = m.tmdb_id
+		? `data-movie='${esc(JSON.stringify({ id: m.tmdb_id, media_type: m.media_type, title: m.title, year: m.year || null, poster_path: m.poster_path }))}'`
+		: 'disabled';
+	const hover = m.tmdb_id ? 'hover:ring-2 hover:ring-amber-400' : 'opacity-70';
+	const dirTag = m.director
+		? `<span data-dir="${esc(firstDirector(m.director))}" class="inline-block text-xs text-slate-400 hover:text-amber-300 hover:underline">${esc(firstDirector(m.director))}</span>`
+		: '';
+	const notes = `${m.match === 'fuzzy' ? '<div class="text-xs text-amber-400">usikker match</div>' : ''}${m.tmdb_id ? '' : m.collection ? '<div class="text-xs text-sky-400">Samling</div>' : '<div class="text-xs text-slate-500">ikke funnet i TMDB</div>'}`;
+	const meta = `${m.year || ''}${m.media_type === 'tv' ? ' · TV' : ''} · ${esc(m.formats.split('|').map(fmtLabel).join(' · '))}`;
+	const fix = isAdmin
+		? `<button data-fix='${esc(JSON.stringify({ id: m.id, title: m.title, year: m.year }))}' class="fix-btn absolute ${list ? 'top-1/2 -translate-y-1/2 right-2' : 'top-2 right-2'} rounded bg-slate-900/90 text-xs px-2 py-1 hover:bg-amber-400 hover:text-slate-900">Rett</button>`
+		: '';
+	if (list) {
+		return `
+			<div class="relative">
+			<button ${movieAttr} class="lib-item w-full text-left bg-slate-800 rounded-xl overflow-hidden flex items-center gap-3 p-2 ${isAdmin ? 'pr-16' : ''} ${hover}">
+				<div class="w-10 shrink-0 aspect-[2/3] bg-slate-700 rounded overflow-hidden">${posterTag(m.poster_path, '', 'w92')}</div>
+				<div class="min-w-0 flex-1">
+					<div class="text-sm font-medium leading-tight">${esc(m.title)}</div>
+					<div class="text-xs text-slate-400">${meta}</div>
+					${dirTag}${notes}
+				</div>
+			</button>
+			${fix}
+			</div>`;
+	}
+	return `
+			<div class="relative">
+			<button ${movieAttr}
+				class="lib-item w-full text-left bg-slate-800 rounded-xl overflow-hidden ${hover}">
+				<div class="aspect-[2/3] bg-slate-700">${posterTag(m.poster_path, m.title)}</div>
+				<div class="p-2">
+					<div class="text-sm font-medium leading-tight">${esc(m.title)}</div>
+					<div class="text-xs text-slate-400">${meta}</div>
+					${dirTag}${notes}
+				</div>
+			</button>
+			${fix}
+			</div>`;
 }
 
 async function loadLibrary(reset) {
@@ -314,22 +370,7 @@ async function loadLibrary(reset) {
 		$('#lib-list').insertAdjacentHTML(
 			'beforeend',
 			results
-				.map(
-					(m) => groupHeading(m) + `
-			<div class="relative">
-			<button ${m.tmdb_id ? `data-movie='${esc(JSON.stringify({ id: m.tmdb_id, media_type: m.media_type, title: m.title, year: m.year || null, poster_path: m.poster_path }))}'` : 'disabled'}
-				class="lib-item w-full text-left bg-slate-800 rounded-xl overflow-hidden ${m.tmdb_id ? 'hover:ring-2 hover:ring-amber-400' : 'opacity-70'}">
-				<div class="aspect-[2/3] bg-slate-700">${posterTag(m.poster_path, m.title)}</div>
-				<div class="p-2">
-					<div class="text-sm font-medium leading-tight">${esc(m.title)}</div>
-					<div class="text-xs text-slate-400">${m.year || ''}${m.media_type === 'tv' ? ' · TV' : ''} · ${esc(m.formats.split('|').map(fmtLabel).join(' · '))}</div>
-					${m.director ? `<span data-dir="${esc(firstDirector(m.director))}" class="inline-block text-xs text-slate-400 hover:text-amber-300 hover:underline">${esc(firstDirector(m.director))}</span>` : ''}
-					${m.match === 'fuzzy' ? '<div class="text-xs text-amber-400">usikker match</div>' : ''}${m.tmdb_id ? '' : m.collection ? '<div class="text-xs text-sky-400">Samling</div>' : '<div class="text-xs text-slate-500">ikke funnet i TMDB</div>'}
-				</div>
-			</button>
-			${isAdmin ? `<button data-fix='${esc(JSON.stringify({ id: m.id, title: m.title, year: m.year }))}' class="fix-btn absolute top-2 right-2 rounded bg-slate-900/90 text-xs px-2 py-1 hover:bg-amber-400 hover:text-slate-900">Rett</button>` : ''}
-			</div>`,
-				)
+				.map((m) => groupHeading(m) + libItemHtml(m))
 				.join(''),
 		);
 		$('#lib-more').classList.toggle('hidden', lib.offset >= total);
@@ -363,6 +404,16 @@ $('#lib-formats').addEventListener('click', (e) => {
 	loadLibrary(true);
 });
 $('#lib-more').addEventListener('click', () => loadLibrary(false));
+$('#lib-view').addEventListener('click', () => {
+	lib.view = lib.view === 'list' ? 'grid' : 'list';
+	try {
+		localStorage.setItem('filmtips_lib_view', lib.view);
+	} catch {}
+	applyLibView();
+	loadLibrary(true);
+});
+loadLibView();
+applyLibView();
 $('#lib-sort').addEventListener('change', (e) => {
 	lib.sort = e.target.value;
 	loadLibrary(true);
