@@ -840,6 +840,7 @@ async function openMovie(movie) {
 	const isTv = mt === 'tv';
 	$('#modal').classList.remove('hidden');
 	document.body.classList.add('overflow-hidden');
+	$('#modal-body').parentElement.scrollTop = 0; // alltid start øverst, ikke der forrige film ble scrollet til
 	$('#modal-body').innerHTML = `
 		<div class="flex gap-4 pr-6">
 			<div class="w-28 shrink-0 aspect-[2/3] bg-slate-700 rounded-lg overflow-hidden">${posterTag(movie.poster_path, movie.title, 'w342')}</div>
