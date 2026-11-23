@@ -844,7 +844,7 @@ async function openMovie(movie) {
 		<div class="flex gap-4 pr-6">
 			<div class="w-28 shrink-0 aspect-[2/3] bg-slate-700 rounded-lg overflow-hidden">${posterTag(movie.poster_path, movie.title, 'w342')}</div>
 			<div class="min-w-0">
-				<h2 class="text-xl font-bold leading-tight">${esc(movie.title)}</h2>
+				<h2 class="text-xl font-bold leading-tight pr-10">${esc(movie.title)}</h2>
 				<div class="text-slate-400 text-sm">${esc(movie.year ?? '')}</div>
 				<div id="lib-badge"></div>
 				${movie.overview ? `<p class="text-sm text-slate-300 mt-2 line-clamp-6">${esc(movie.overview)}</p>` : ''}
