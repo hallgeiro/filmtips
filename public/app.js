@@ -166,15 +166,18 @@ async function loadFeed() {
 		$('#feed').innerHTML = results
 			.map(
 				(r) => `
-			<button data-movie='${esc(JSON.stringify({ id: r.tmdb_id, title: r.title, poster_path: r.poster_path }))}'
-				class="movie-feed w-full flex gap-3 text-left bg-slate-800 rounded-xl p-3 hover:ring-2 hover:ring-amber-400">
-				<div class="w-16 shrink-0 aspect-[2/3] bg-slate-700 rounded overflow-hidden">${posterTag(r.poster_path, r.title, 'w154')}</div>
-				<div class="min-w-0">
-					<div class="font-semibold">${esc(r.title)}</div>
-					<div class="text-sm text-amber-300">${dice(r.rating)} <span class="text-slate-400">· ${esc(r.username)} · ${fmtDate(r.created_at)}</span></div>
-					${r.comment ? `<p class="text-sm text-slate-300 mt-1 break-words">${esc(r.comment)}</p>` : ''}
-				</div>
-			</button>`,
+			<div class="relative">
+				<button data-movie='${esc(JSON.stringify({ id: r.tmdb_id, title: r.title, poster_path: r.poster_path }))}'
+					class="movie-feed w-full flex gap-3 text-left bg-slate-800 rounded-xl p-3 hover:ring-2 hover:ring-amber-400">
+					<div class="w-16 shrink-0 aspect-[2/3] bg-slate-700 rounded overflow-hidden">${posterTag(r.poster_path, r.title, 'w154')}</div>
+					<div class="min-w-0 pr-12">
+						<div class="font-semibold">${esc(r.title)}</div>
+						<div class="text-sm text-amber-300">${dice(r.rating)} <span class="text-slate-400">· ${esc(r.username)} · ${fmtDate(r.created_at)}</span></div>
+						${r.comment ? `<p class="text-sm text-slate-300 mt-1 break-words">${esc(r.comment)}</p>` : ''}
+					</div>
+				</button>
+				${r.username === me || isAdmin ? `<button data-feed-del="${r.id}" class="absolute top-3 right-3 text-xs text-red-400 hover:underline">Slett</button>` : ''}
+			</div>`,
 			)
 			.join('');
 	} catch (err) {
@@ -182,7 +185,18 @@ async function loadFeed() {
 	}
 }
 
-$('#feed').addEventListener('click', (e) => {
+$('#feed').addEventListener('click', async (e) => {
+	const del = e.target.closest('[data-feed-del]');
+	if (del) {
+		if (!confirm('Slette denne anbefalingen?')) return;
+		try {
+			await api(`/api/recommendations/${del.dataset.feedDel}?username=${encodeURIComponent(me)}`, { method: 'DELETE' });
+			loadFeed();
+		} catch (err) {
+			alert(err.message);
+		}
+		return;
+	}
 	const btn = e.target.closest('.movie-feed');
 	if (btn) openMovie(JSON.parse(btn.dataset.movie));
 });
