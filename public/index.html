@@ -11,26 +11,17 @@
 
 	<!-- Innlogging -->
 	<section id="login" class="hidden min-h-screen flex items-center justify-center p-6">
-		<div class="w-full max-w-sm bg-slate-800 rounded-2xl p-6 space-y-4 shadow-xl">
+		<form id="pin-login-form" class="w-full max-w-sm bg-slate-800 rounded-2xl p-6 space-y-4 shadow-xl">
 			<h1 class="text-2xl font-bold">🎬 Filmtips</h1>
 			<select id="login-user" class="w-full rounded-lg bg-slate-900 border border-slate-700 px-4 py-3"></select>
-			<form id="pin-login-form" class="space-y-4 hidden">
-				<p class="text-slate-400 text-sm">Skriv inn PIN (6 siffer).</p>
-				<input id="login-pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" placeholder="PIN (6 siffer)"
-					class="w-full rounded-lg bg-slate-900 border border-slate-700 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-400" />
-				<p id="pin-login-error" class="text-red-400 text-sm hidden"></p>
-				<button class="w-full rounded-lg bg-amber-400 text-slate-900 font-semibold py-3 hover:bg-amber-300">Logg inn</button>
-				<button type="button" id="show-password" class="w-full text-sm text-slate-400 underline hover:text-slate-200">Bruk felles passord i stedet</button>
-			</form>
-			<form id="login-form" class="space-y-4">
-				<p id="login-help" class="text-slate-400 text-sm">Skriv inn passordet du har fått.</p>
-				<input id="password" type="password" autocomplete="current-password" placeholder="Passord"
-					class="w-full rounded-lg bg-slate-900 border border-slate-700 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-400" />
-				<p id="login-error" class="text-red-400 text-sm hidden"></p>
-				<button class="w-full rounded-lg bg-amber-400 text-slate-900 font-semibold py-3 hover:bg-amber-300">Logg inn</button>
-				<button type="button" id="show-pin" class="w-full text-sm text-slate-400 underline hover:text-slate-200 hidden">Bruk PIN i stedet</button>
-			</form>
-		</div>
+			<p id="login-help" class="text-slate-400 text-sm"></p>
+			<input id="login-pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" placeholder="PIN (6 siffer)"
+				class="w-full rounded-lg bg-slate-900 border border-slate-700 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-400" />
+			<input id="login-pin2" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" placeholder="Gjenta PIN"
+				class="hidden w-full rounded-lg bg-slate-900 border border-slate-700 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-400" />
+			<p id="pin-login-error" class="text-red-400 text-sm hidden"></p>
+			<button id="login-btn" class="w-full rounded-lg bg-amber-400 text-slate-900 font-semibold py-3 hover:bg-amber-300">Logg inn</button>
+		</form>
 	</section>
 
 	<!-- Hovedapp -->

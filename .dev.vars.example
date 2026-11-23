@@ -1,5 +1,6 @@
 # Kopier til .dev.vars (brukes av `wrangler dev`). Ikke sjekk inn .dev.vars!
-APP_PASSWORD=velg-et-passord
+# Hemmelig signeringsnøkkel for innloggings-cookies (ikke et passord man taster). Bruk en lang, tilfeldig streng.
+APP_PASSWORD=velg-en-lang-tilfeldig-streng
 TMDB_API_KEY=din-tmdb-api-nokkel-eller-read-access-token
 ADMIN_PASSWORD=velg-et-admin-passord
 # Valgfri: reserve-oppslag for titler TMDB ikke finner (gratis nøkkel fra omdbapi.com)

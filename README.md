@@ -10,7 +10,7 @@ Ikke-kommersiell filmanbefalingsapp for familie og venner. Hono på Cloudflare W
 npm install
 npx wrangler login
 npx wrangler d1 create filmtips        # lim inn database_id i wrangler.jsonc
-cp .dev.vars.example .dev.vars         # fyll inn APP_PASSWORD og TMDB_API_KEY
+cp .dev.vars.example .dev.vars         # fyll inn APP_PASSWORD (hemmelig signeringsnøkkel) og TMDB_API_KEY
 npm run dev                            # oppretter tabellen lokalt (db:setup) og starter på http://localhost:8787
 ```
 
@@ -20,7 +20,7 @@ TMDB-nøkkel: gratis på https://www.themoviedb.org/settings/api (både v3-nøkk
 
 ```bash
 npm run db:setup:remote
-npx wrangler secret put APP_PASSWORD
+npx wrangler secret put APP_PASSWORD   # lang, tilfeldig streng (signeringsnøkkel, ikke et passord man taster)
 npx wrangler secret put TMDB_API_KEY
 npm run deploy
 ```
@@ -55,8 +55,8 @@ Alle `/api/*`-ruter unntatt `/api/login` krever innloggingscookie.
 ## Merknader
 
 - Admin: sett secret `ADMIN_PASSWORD`. Trykk «Admin» øverst i appen og skriv passordet for å kunne slette andres anbefalinger. Uten admin kan man bare slette egne (tillitsbasert på valgt navn).
-- PIN: hver bruker lager en PIN (4–6 siffer) første gang de velger navnet sitt. PIN lagres som PBKDF2-hash i tabellen `user_pins`, med lås i 15 minutter etter 5 feil forsøk. Uten admin kan man bare anbefale og slette som navnet man har logget inn som. Glemt PIN: admin trykker «Nullstill PIN». Kjør `npm run db:setup:remote` (eller kjør `schema.sql` mot D1) når tabellen `user_pins` mangler.
-- Sikkerheten er bevisst enkel (felles passord, tillitsbasert navnevalg), tilpasset familie og venner.
+- Innlogging: velg navn og skriv en PIN på 6 siffer. Det finnes ikke noe felles passord. Første som velger et navn uten PIN lager den (skriv den to ganger). Eldre PIN-er på 4–5 siffer må nullstilles av admin. PIN lagres som PBKDF2-hash i tabellen `user_pins`, med lås i 15 minutter etter 5 feil forsøk. Uten admin kan man bare anbefale og slette som navnet man har logget inn som. Glemt PIN: admin trykker «Nullstill PIN». Kjør `npm run db:setup:remote` (eller kjør `schema.sql` mot D1) når tabellen `user_pins` mangler.
+- Sikkerheten er bevisst enkel (navn + 6-sifret PIN med sperre ved gjetting), tilpasset familie og venner. `APP_PASSWORD` brukes bare som hemmelig nøkkel for å signere innloggings-cookies. Bytter du den, logges alle ut. Hold den lang og tilfeldig.
 - TMDB krever attribusjon. Strømdata kommer fra JustWatch. Begge er kreditert i bunnteksten.
 - Bibliotek: som admin trykker du «Importer CLZ-CSV…» og velger eksportfilen fra CLZ Movies (kolonnene Title og Format kreves). Filmer matches mot TMDB på tittel og år, og samme film i flere formater slås sammen. Importen kan kjøres på nytt uten duplikater. Anbefalte filmer som finnes i biblioteket merkes med formatet.
 - Biblioteket kan sorteres på tittel, år (nyest/eldst) og regissør (etter etternavn), filtreres på format og tiår, og søkes på tittel eller regissør. Trykk på et regissørnavn for å se alle filmene hans eller hennes. Som admin kan du rette feilmatcher («Rett») og legge til enkeltfilmer med strekkodeskanning (kamera krever https).

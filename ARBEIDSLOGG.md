@@ -61,7 +61,7 @@ Sammendrag av oppsett, arkitektur og utviklingsarbeid. Filmtips er en ikke-komme
 - `POST /api/admin/library/import`, `.../rematch` (kryssjekk), `.../add`
 - `PATCH /api/admin/library/:id`
 - `GET /api/admin/barcode/:code`
-- `POST /api/login`, `/api/pin-login`, `/api/identity`, `/api/admin/login`, `/api/admin/reset-pin`
+- `POST /api/pin-login`, `/api/identity`, `/api/admin/login`, `/api/admin/reset-pin`
 
 ## Kronologi
 
@@ -87,6 +87,8 @@ Sammendrag av oppsett, arkitektur og utviklingsarbeid. Filmtips er en ikke-komme
 15. Admin kan lage PIN: velger admin et navn uten PIN, tilbys det å lage PIN (tidligere ble admin aldri spurt). «Nullstill PIN» tømmer valgt navn, så navnet må velges på nytt for å lage ny PIN.
 
 16. Innloggingsskjermen: navn velges først. Navn med PIN får PIN-felt (med lenke til passord), navn uten PIN får passordfelt og blir spurt om å lage 6-sifret PIN rett etter innlogging. `GET /api/login-info` returnerer `users` og `pinUsers`. Sist valgte navn huskes i localStorage.
+
+17. Felles passord fjernet: kun navn + 6-sifret PIN. `POST /api/pin-login` logger inn, eller lager PIN (`create: true`) for navn uten PIN. `/api/*` krever gyldig PIN-identitet eller admin-cookie. `/api/login` og passord-cookien `filmtips_session` er borte. `APP_PASSWORD` er nå bare signeringsnøkkel for cookies (ikke fjern den). Risiko: første som velger et ledig navn får det; admin kan nullstille.
 
 ## Kjente begrensninger og mulige neste steg
 

@@ -14,7 +14,6 @@ type Ctx = Context<{ Bindings: Bindings }>
 
 const app = new Hono<{ Bindings: Bindings }>()
 
-const COOKIE = 'filmtips_session'
 const ADMIN_COOKIE = 'filmtips_admin'
 const IDENTITY_COOKIE = 'filmtips_user'
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 90 // 90 dager
@@ -38,49 +37,34 @@ async function sessionToken(password: string, label = 'filmtips-session-v1'): Pr
 	return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, '0')).join('')
 }
 
-async function setSessionCookie(c: Ctx) {
-	setCookie(c, COOKIE, await sessionToken(c.env.APP_PASSWORD), {
-		httpOnly: true,
-		secure: new URL(c.req.url).protocol === 'https:',
-		sameSite: 'Lax',
-		path: '/',
-		maxAge: COOKIE_MAX_AGE,
-	})
-}
-
-app.post('/api/login', async (c) => {
-	const body = await c.req.json<{ password?: string }>().catch(() => ({} as { password?: string }))
-	const password = String(body.password ?? '')
-	if (!c.env.APP_PASSWORD) {
-		return c.json({ error: 'Serverfeil: secret APP_PASSWORD er ikke satt på denne Workeren' }, 500)
-	}
-	if (!(await safeEqual(password, c.env.APP_PASSWORD))) {
-		return c.json({ error: 'Feil passord' }, 401)
-	}
-	await setSessionCookie(c)
-	return c.json({ ok: true })
-})
-
 app.post('/api/logout', (c) => {
-	deleteCookie(c, COOKIE, { path: '/' })
 	deleteCookie(c, IDENTITY_COOKIE, { path: '/' })
 	return c.json({ ok: true })
 })
 
-// Innlogging med navn + PIN (6 siffer) uten felles passord. Bare for navn som allerede har PIN.
+// Innlogging med navn + PIN (6 siffer). Har navnet ingen PIN, og `create` er satt, lages PIN-en nå
+// (første som velger et ledig navn får det; admin kan nullstille).
 app.post('/api/pin-login', async (c) => {
-	if (!c.env.APP_PASSWORD) return c.json({ error: 'Serverfeil: secret APP_PASSWORD er ikke satt på denne Workeren' }, 500)
-	const body = await c.req.json<{ username?: string; pin?: string }>().catch(() => ({} as { username?: string; pin?: string }))
+	if (!c.env.APP_PASSWORD) return c.json({ error: 'Serverfeil: secret APP_PASSWORD (signeringsnøkkel) er ikke satt på denne Workeren' }, 500)
+	const body = await c.req.json<{ username?: string; pin?: string; create?: boolean }>().catch(() => ({} as { username?: string; pin?: string; create?: boolean }))
 	const name = String(body.username ?? '').trim()
 	const pin = String(body.pin ?? '').trim()
 	if (!getUsers(c.env).includes(name)) return c.json({ error: 'Ukjent navn' }, 400)
-	const row = await getPinRow(c, name)
-	if (!row) return c.json({ error: 'Dette navnet har ingen PIN ennå. Logg inn med passord først.' }, 403)
-	if (!PIN_RE_NEW.test(pin)) return c.json({ error: 'PIN må være 6 siffer. Har du en eldre PIN, logg inn med passord og be admin nullstille den.' }, 400)
-	const err = await checkPin(c, name, row, pin)
-	if (err) return err
+	let row = await getPinRow(c, name)
+	if (!row) {
+		if (!body.create) return c.json({ error: 'Dette navnet har ingen PIN ennå. Last siden på nytt og lag en.' }, 409)
+		if (!PIN_RE_NEW.test(pin)) return c.json({ error: 'PIN må være 6 siffer' }, 400)
+		const salt = toHex(crypto.getRandomValues(new Uint8Array(16)))
+		const pinHash = await hashPin(pin, salt)
+		await c.env.DB.prepare(`INSERT OR IGNORE INTO user_pins (username, pin_hash, salt) VALUES (?, ?, ?)`).bind(name, pinHash, salt).run()
+		row = await getPinRow(c, name)
+		if (!row || row.pin_hash !== pinHash) return c.json({ error: 'Navnet ble tatt av noen andre akkurat nå. Last siden på nytt.' }, 409)
+	} else {
+		if (!PIN_RE_NEW.test(pin)) return c.json({ error: 'PIN må være 6 siffer. Har du en eldre PIN, be admin nullstille den.' }, 400)
+		const err = await checkPin(c, name, row, pin)
+		if (err) return err
+	}
 	await setIdentityCookie(c, name, row.pin_hash)
-	await setSessionCookie(c)
 	return c.json({ ok: true, identity: name })
 })
 
@@ -91,17 +75,11 @@ app.get('/api/login-info', async (c) => {
 	return c.json({ users, pinUsers: users.filter((u) => results.some((r) => r.username === u)) })
 })
 
-// Alt under her krever innlogging.
-// Gyldig passord-økt ELLER gyldig PIN-identitet (signert med passordet, så passordbytte logger ut begge) gir tilgang.
-// Økten fornyes ved bruk, slik at man ikke må taste passordet på nytt så lenge appen brukes.
+// Alt under her krever innlogging: gyldig PIN-identitet (cookie signert med PIN-hashen) eller admin-cookie.
+// APP_PASSWORD brukes bare som hemmelig signeringsnøkkel, ikke som innloggingspassord.
 app.use('/api/*', async (c, next) => {
 	if (!c.env.APP_PASSWORD) return c.json({ error: 'Ikke innlogget' }, 401)
-	const cookie = getCookie(c, COOKIE)
-	const sessionOk = !!cookie && (await safeEqual(cookie, await sessionToken(c.env.APP_PASSWORD)))
-	if (!sessionOk && !(await getIdentity(c))) {
-		return c.json({ error: 'Ikke innlogget' }, 401)
-	}
-	if (c.req.path === '/api/config' || !sessionOk) await setSessionCookie(c)
+	if (!(await getIdentity(c)) && !(await isAdmin(c))) return c.json({ error: 'Ikke innlogget' }, 401)
 	await next()
 })
 

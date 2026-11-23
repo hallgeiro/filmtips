@@ -15,7 +15,7 @@ async function api(path, opts = {}) {
 		...opts,
 		headers: { 'content-type': 'application/json', ...(opts.headers || {}) },
 	});
-	if (res.status === 401 && path !== '/api/login' && path !== '/api/pin-login' && path !== '/api/admin/login') {
+	if (res.status === 401 && path !== '/api/pin-login' && path !== '/api/admin/login') {
 		showLogin();
 		throw new Error('Ikke innlogget');
 	}
@@ -32,17 +32,17 @@ const dice = (n) => `🎲 ${n}`;
 let pinUsers = [];
 const selectedLoginUser = () => $('#login-user').value;
 
-function showLoginMode(pinMode) {
-	const name = selectedLoginUser();
-	$('#pin-login-form').classList.toggle('hidden', !pinMode);
-	$('#login-form').classList.toggle('hidden', pinMode);
-	$('#show-pin').classList.toggle('hidden', !pinUsers.includes(name));
-	$('#login-help').textContent = pinUsers.includes(name)
-		? 'Skriv inn det felles passordet.'
-		: 'Skriv inn passordet du har fått. Etterpå lager du din egen PIN.';
+function updateLoginMode() {
+	const creating = !pinUsers.includes(selectedLoginUser());
+	$('#login-pin2').classList.toggle('hidden', !creating);
+	$('#login-btn').textContent = creating ? 'Lag PIN og logg inn' : 'Logg inn';
+	$('#login-help').textContent = creating
+		? 'Dette navnet har ingen PIN ennå. Velg 6 siffer og skriv dem to ganger. Glemmer du den, kan admin nullstille den.'
+		: 'Skriv inn PIN-en din (6 siffer).';
+	$('#login-pin').value = '';
+	$('#login-pin2').value = '';
 	$('#pin-login-error').classList.add('hidden');
-	$('#login-error').classList.add('hidden');
-	(pinMode ? $('#login-pin') : $('#password')).focus();
+	$('#login-pin').focus();
 }
 
 async function showLogin() {
@@ -59,46 +59,35 @@ async function showLogin() {
 		last = localStorage.getItem('filmtips_login_user') || '';
 	} catch {}
 	$('#login-user').innerHTML = loginUsers.map((u) => `<option ${u === last ? 'selected' : ''}>${esc(u)}</option>`).join('');
-	showLoginMode(pinUsers.includes(selectedLoginUser()));
+	updateLoginMode();
 }
 
 $('#login-user').addEventListener('change', () => {
 	try {
 		localStorage.setItem('filmtips_login_user', selectedLoginUser());
 	} catch {}
-	showLoginMode(pinUsers.includes(selectedLoginUser()));
+	updateLoginMode();
 });
-$('#show-password').addEventListener('click', () => showLoginMode(false));
-$('#show-pin').addEventListener('click', () => showLoginMode(true));
 
 $('#pin-login-form').addEventListener('submit', async (e) => {
 	e.preventDefault();
-	$('#pin-login-error').classList.add('hidden');
-	try {
-		await api('/api/pin-login', {
-			method: 'POST',
-			body: JSON.stringify({ username: $('#login-user').value, pin: $('#login-pin').value.trim() }),
-		});
-		$('#login-pin').value = '';
-		await start();
-	} catch (err) {
-		$('#pin-login-error').textContent = err.message;
+	const showErr = (msg) => {
+		$('#pin-login-error').textContent = msg;
 		$('#pin-login-error').classList.remove('hidden');
-	}
-});
-
-$('#login-form').addEventListener('submit', async (e) => {
-	e.preventDefault();
-	$('#login-error').classList.add('hidden');
+	};
+	$('#pin-login-error').classList.add('hidden');
+	const name = selectedLoginUser();
+	const pin = $('#login-pin').value.trim();
+	const creating = !pinUsers.includes(name);
+	if (!/^\d{6}$/.test(pin)) return showErr('PIN må være 6 siffer.');
+	if (creating && pin !== $('#login-pin2').value.trim()) return showErr('PIN-ene er ikke like.');
 	try {
-		const name = selectedLoginUser();
-		await api('/api/login', { method: 'POST', body: JSON.stringify({ password: $('#password').value }) });
-		$('#password').value = '';
+		await api('/api/pin-login', { method: 'POST', body: JSON.stringify({ username: name, pin, create: creating }) });
+		$('#login-pin').value = '';
+		$('#login-pin2').value = '';
 		await start();
-		if (name && !hasPin.includes(name) && (await askPin(name))) await refreshConfig(); // lag PIN rett etter passord
 	} catch (err) {
-		$('#login-error').textContent = err.message;
-		$('#login-error').classList.remove('hidden');
+		showErr(err.message);
 	}
 });
 
