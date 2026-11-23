@@ -31,7 +31,12 @@
 			<button id="logout" class="text-slate-400 hover:text-slate-200 text-sm" title="Logg ut">Logg ut</button>
 		</header>
 
-		<nav class="flex gap-2 mb-4" role="tablist">
+		<div id="admin-bar" class="hidden mb-3 text-sm text-slate-400 flex items-center gap-3">
+		<span>Admin:</span>
+		<button id="reset-pin" class="underline hover:text-slate-200">Nullstill PIN for valgt navn</button>
+	</div>
+
+	<nav class="flex gap-2 mb-4" role="tablist">
 			<button data-tab="search" class="tab flex-1 rounded-lg py-2 text-sm font-medium">🔍 Søk</button>
 			<button data-tab="feed" class="tab flex-1 rounded-lg py-2 text-sm font-medium">⭐ Anbefalinger</button>
 		</nav>
@@ -53,6 +58,25 @@
 				Strømmedata fra <a class="underline" href="https://www.justwatch.com" target="_blank" rel="noopener">JustWatch</a>.
 				Dette produktet bruker TMDB API, men er ikke godkjent eller sertifisert av TMDB.</p>
 		</footer>
+	</div>
+
+	<!-- PIN-dialog -->
+	<div id="pin-modal" class="hidden fixed inset-0 z-30 bg-black/70 flex items-center justify-center p-4">
+		<form id="pin-form" class="bg-slate-800 w-full max-w-sm rounded-2xl p-5 space-y-3">
+			<h2 id="pin-title" class="text-lg font-bold"></h2>
+			<p id="pin-help" class="text-sm text-slate-400"></p>
+			<input id="pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" placeholder="PIN (4–6 siffer)"
+				class="w-full rounded-lg bg-slate-900 border border-slate-700 px-4 py-3 text-center tracking-widest focus:outline-none focus:ring-2 focus:ring-amber-400" />
+			<div id="pin2-wrap" class="hidden">
+				<input id="pin2" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" placeholder="Gjenta PIN"
+					class="w-full rounded-lg bg-slate-900 border border-slate-700 px-4 py-3 text-center tracking-widest focus:outline-none focus:ring-2 focus:ring-amber-400" />
+			</div>
+			<p id="pin-error" class="text-red-400 text-sm hidden"></p>
+			<div class="flex gap-2">
+				<button type="button" id="pin-cancel" class="flex-1 rounded-lg bg-slate-900 border border-slate-700 py-3">Avbryt</button>
+				<button class="flex-1 rounded-lg bg-amber-400 text-slate-900 font-semibold py-3 hover:bg-amber-300">OK</button>
+			</div>
+		</form>
 	</div>
 
 	<!-- Detaljark -->

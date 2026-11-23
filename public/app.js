@@ -6,7 +6,8 @@ const esc = (s) =>
 let users = [];
 let isAdmin = false;
 let me = '';
-let identity = null; // navn låst av serveren (null = ikke valgt ennå)
+let identity = null; // navn bekreftet med PIN av serveren (null = ikke valgt ennå)
+let hasPin = [];
 let searchTimer;
 
 async function api(path, opts = {}) {
@@ -14,7 +15,7 @@ async function api(path, opts = {}) {
 		...opts,
 		headers: { 'content-type': 'application/json', ...(opts.headers || {}) },
 	});
-	if (res.status === 401 && path !== '/api/login') {
+	if (res.status === 401 && path !== '/api/login' && path !== '/api/admin/login') {
 		showLogin();
 		throw new Error('Ikke innlogget');
 	}
@@ -74,35 +75,86 @@ $('#admin').addEventListener('click', async () => {
 	}
 });
 
-/* ---------- Navn ---------- */
+/* ---------- Navn og PIN ---------- */
 function renderUser() {
 	$('#user').innerHTML =
 		`<option value="">Velg navn…</option>` + users.map((u) => `<option ${u === me ? 'selected' : ''}>${esc(u)}</option>`).join('');
-	const locked = !!identity && !isAdmin;
-	$('#user').disabled = locked;
-	$('#user').title = locked ? 'Navnet er låst. Be admin om å endre det.' : '';
+	$('#admin-bar').classList.toggle('hidden', !isAdmin);
 }
 
 async function refreshConfig() {
-	({ users, admin: isAdmin, identity } = await api('/api/config'));
-	if (identity && !isAdmin) me = identity;
-	else if (!users.includes(me)) me = identity || '';
+	({ users, admin: isAdmin, identity, hasPin } = await api('/api/config'));
+	if (isAdmin) {
+		if (!users.includes(me)) me = identity || '';
+	} else {
+		me = identity || '';
+	}
 	renderAdmin();
 	renderUser();
 }
 
+function askPin(name) {
+	return new Promise((resolve) => {
+		const creating = !hasPin.includes(name);
+		$('#pin-title').textContent = creating ? `Lag en PIN for ${name}` : `PIN for ${name}`;
+		$('#pin-help').textContent = creating
+			? 'Velg 4–6 siffer. Du bruker den når du velger dette navnet. Glemmer du den, kan admin nullstille den.'
+			: 'Skriv inn PIN-en din.';
+		$('#pin2-wrap').classList.toggle('hidden', !creating);
+		$('#pin').value = '';
+		$('#pin2').value = '';
+		$('#pin-error').classList.add('hidden');
+		$('#pin-modal').classList.remove('hidden');
+		$('#pin').focus();
+
+		const showErr = (msg) => {
+			$('#pin-error').textContent = msg;
+			$('#pin-error').classList.remove('hidden');
+		};
+		const done = (ok) => {
+			$('#pin-modal').classList.add('hidden');
+			$('#pin-form').onsubmit = null;
+			$('#pin-cancel').onclick = null;
+			resolve(ok);
+		};
+		$('#pin-cancel').onclick = () => done(false);
+		$('#pin-form').onsubmit = async (e) => {
+			e.preventDefault();
+			const pin = $('#pin').value.trim();
+			if (!/^\d{4,6}$/.test(pin)) return showErr('PIN må være 4–6 siffer.');
+			if (creating && pin !== $('#pin2').value.trim()) return showErr('PIN-ene er ikke like.');
+			try {
+				await api('/api/identity', { method: 'POST', body: JSON.stringify({ username: name, pin }) });
+				done(true);
+			} catch (err) {
+				showErr(err.message);
+			}
+		};
+	});
+}
+
 $('#user').addEventListener('change', async (e) => {
 	const wanted = e.target.value;
-	if (!wanted) {
-		me = '';
+	if (isAdmin) {
+		me = wanted; // admin kan velge fritt uten PIN
 		return;
 	}
+	if (wanted && (await askPin(wanted))) {
+		await refreshConfig();
+		return;
+	}
+	renderUser(); // avbrutt eller feil: tilbake til forrige navn
+});
+
+$('#reset-pin').addEventListener('click', async () => {
+	if (!me) return alert('Velg et navn først.');
+	if (!confirm(`Nullstille PIN for ${me}? Personen må lage en ny PIN og blir logget ut av navnet.`)) return;
 	try {
-		await api('/api/identity', { method: 'POST', body: JSON.stringify({ username: wanted }) });
-		me = identity = wanted;
+		await api('/api/admin/reset-pin', { method: 'POST', body: JSON.stringify({ username: me }) });
+		await refreshConfig();
+		alert(`PIN for ${me} er nullstilt.`);
 	} catch (err) {
 		alert(err.message);
-		e.target.value = me;
 	}
 });
 

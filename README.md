@@ -41,12 +41,13 @@ Alle `/api/*`-ruter unntatt `/api/login` krever innloggingscookie.
 | `GET /api/recommendations[?tmdb_id=]` | hent anbefalinger |
 | `POST /api/recommendations` | lagre/oppdater (én per person per film) |
 | `DELETE /api/recommendations/:id?username=` | slett egen anbefaling (admin kan slette alle) |
-| `POST /api/identity` | `{username}` låser valgt navn i en signert cookie (bare admin kan endre det etterpå) |
+| `POST /api/identity` | `{username, pin}` velger navn. Første gang opprettes PIN-en, deretter må den oppgis |
+| `POST /api/admin/reset-pin` | `{username}` (admin) fjerner PIN slik at den kan lages på nytt |
 | `POST /api/admin/login` / `logout` | `{password}` mot `ADMIN_PASSWORD` gir admin-cookie |
 
 ## Merknader
 
 - Admin: sett secret `ADMIN_PASSWORD`. Trykk «Admin» øverst i appen og skriv passordet for å kunne slette andres anbefalinger. Uten admin kan man bare slette egne (tillitsbasert på valgt navn).
-- Navnelås: første gang man velger navn, låses det i nettleseren (signert cookie). Uten admin kan man bare anbefale og slette som seg selv. Sletter noen cookies, kan de velge et nytt navn, så dette er en praktisk sperre og ikke streng sikkerhet.
+- PIN: hver bruker lager en PIN (4–6 siffer) første gang de velger navnet sitt. PIN lagres som PBKDF2-hash i tabellen `user_pins`, med lås i 15 minutter etter 5 feil forsøk. Uten admin kan man bare anbefale og slette som navnet man har logget inn som. Glemt PIN: admin trykker «Nullstill PIN». Kjør `npm run db:setup:remote` (eller kjør `schema.sql` mot D1) når tabellen `user_pins` mangler.
 - Sikkerheten er bevisst enkel (felles passord, tillitsbasert navnevalg), tilpasset familie og venner.
 - TMDB krever attribusjon. Strømdata kommer fra JustWatch. Begge er kreditert i bunnteksten.
