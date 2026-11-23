@@ -1,0 +1,23 @@
+{
+	"name": "filmtips",
+	"version": "1.0.0",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"deploy": "wrangler deploy",
+		"dev": "npm run db:setup && wrangler dev",
+		"start": "wrangler dev",
+		"cf-typegen": "wrangler types",
+		"typecheck": "tsc --noEmit",
+		"db:setup": "wrangler d1 execute DB --local --file=schema.sql",
+		"db:setup:remote": "wrangler d1 execute DB --remote --file=schema.sql"
+	},
+	"dependencies": {
+		"hono": "^4.13.19"
+	},
+	"devDependencies": {
+		"@cloudflare/workers-types": "^4.20250910.0",
+		"typescript": "^5.5.2",
+		"wrangler": "^4"
+	}
+}

@@ -1,0 +1,3 @@
+# Kopier til .dev.vars (brukes av `wrangler dev`). Ikke sjekk inn .dev.vars!
+APP_PASSWORD=velg-et-passord
+TMDB_API_KEY=din-tmdb-api-nokkel-eller-read-access-token

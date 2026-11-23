@@ -1,0 +1,36 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "filmtips",
+	"main": "src/index.ts",
+	"compatibility_date": "2026-11-20",
+	"observability": {
+		"enabled": true
+	},
+
+	// Statiske filer (HTML/JS) serveres fra /public.
+	// Kun /api/* kjører gjennom Worker; alt annet går rett til statiske filer.
+	"assets": {
+		"directory": "./public",
+		"binding": "ASSETS",
+		"run_worker_first": ["/api/*"]
+	},
+
+	// Kjør `npx wrangler d1 create filmtips` og lim inn den ekte database_id her (platsholderen under er kun for lokal utvikling).
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "filmtips",
+			"database_id": "00000000-0000-0000-0000-000000000000"
+		}
+	],
+
+	// Navnene i nedtrekkslisten (kommaseparert). Endre til familie og venner.
+	"vars": {
+		"USERS": "Mamma,Pappa,Kari,Ola,Bestemor"
+	}
+
+	// Hemmeligheter (ikke her!):
+	//   APP_PASSWORD  – felles passord
+	//   TMDB_API_KEY  – TMDB API-nøkkel (v3) eller Read Access Token (v4)
+	// Lokalt: .dev.vars  |  Produksjon: `npx wrangler secret put <NAVN>`
+}
