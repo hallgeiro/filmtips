@@ -113,6 +113,8 @@ Sammendrag av oppsett, arkitektur og utviklingsarbeid. Filmtips er en ikke-komme
 
 28. Anbefalingsskjemaet i filmvinduet heter «Anbefal denne filmen» (med forklaring) og knappen «⭐ Anbefal denne filmen». Har du anbefalt filmen fra før, står det «Din anbefaling ✓» og «Oppdater anbefalingen».
 
+29. «Mine lister» i filmvinduet er en nedtrekksmeny med alle egne lister og avkryssing: kryss av for å legge filmen til, fjern krysset for å ta den bort (bruker `item_id` fra `GET /api/lists?tmdb_id=&media_type=` og `DELETE /api/lists/:id/items/:itemId`). Sammendraget viser hvilke lister filmen ligger i.
+
 ## Kjente begrensninger og mulige neste steg
 
 - Rundt 30 titler må rettes manuelt med «Rett match» (IMDb-kode eller TMDB-lenke). Det koster ingen OMDb-oppslag.

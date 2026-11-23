@@ -503,16 +503,17 @@ function listFields(b: { title?: unknown; description?: unknown; ranked?: unknow
 }
 
 app.get('/api/lists', async (c) => {
-	// Valgfritt ?tmdb_id=&media_type= gir `has_item` per liste (finnes filmen allerede i listen?)
+	// Valgfritt ?tmdb_id=&media_type= gir `has_item` og `item_id` per liste (finnes filmen allerede i listen?)
 	const tmdbId = Number(c.req.query('tmdb_id')) || 0
 	const mediaType = c.req.query('media_type') === 'tv' ? 'tv' : 'movie'
 	const { results } = await c.env.DB.prepare(
 		`SELECT l.*, (SELECT COUNT(*) FROM film_list_items i WHERE i.list_id = l.id) AS item_count,
-		        EXISTS (SELECT 1 FROM film_list_items i WHERE i.list_id = l.id AND i.tmdb_id = ? AND i.media_type = ?) AS has_item
+		        EXISTS (SELECT 1 FROM film_list_items i WHERE i.list_id = l.id AND i.tmdb_id = ? AND i.media_type = ?) AS has_item,
+		        (SELECT i.id FROM film_list_items i WHERE i.list_id = l.id AND i.tmdb_id = ? AND i.media_type = ?) AS item_id
 		 FROM film_lists l ORDER BY l.updated_at DESC, l.id DESC LIMIT 200`,
 	)
-		.bind(tmdbId, mediaType)
-		.all<ListRow & { item_count: number; has_item: number }>()
+		.bind(tmdbId, mediaType, tmdbId, mediaType)
+		.all<ListRow & { item_count: number; has_item: number; item_id: number | null }>()
 	// De fire første plakatene per liste, til forhåndsvisning
 	const { results: posters } = await c.env.DB.prepare(
 		`SELECT i.list_id, i.poster_path FROM film_list_items i

@@ -1317,8 +1317,8 @@ function providerRow(label, list) {
 		</div>`;
 }
 
-// «Mine lister» i filmvinduet: legg filmen i en egen liste, eller lag en ny liste med den
-async function initModalLists(movie, mt, message = '') {
+// «Mine lister» i filmvinduet: nedtrekksmeny med alle egne lister. Kryss av for å legge filmen til, fjern krysset for å ta den bort.
+async function initModalLists(movie, mt, message = '', keepOpen = false) {
 	const box = $('#modal-lists');
 	if (!box) return;
 	if (!me) {
@@ -1333,16 +1333,28 @@ async function initModalLists(movie, mt, message = '') {
 		box.textContent = err.message;
 		return;
 	}
-	const free = mine.filter((l) => !l.has_item);
+	const picked = mine.filter((l) => l.has_item);
+	const summary = mine.length ? (picked.length ? picked.map((l) => esc(l.title)).join(', ') : 'Ingen valgt') : 'Du har ingen lister ennå';
 	box.innerHTML = `
 		${
 			mine.length
-				? `<div class="flex gap-2">
-			<select id="ml-select" class="flex-1 min-w-0 rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-sm">
-				${mine.map((l) => `<option value="${l.id}" ${l.has_item ? 'disabled' : ''}>${esc(l.title)}${l.has_item ? ' ✓ (allerede i listen)' : ''}</option>`).join('')}
-			</select>
-			<button id="ml-add" ${free.length ? '' : 'disabled'} class="shrink-0 rounded-lg bg-amber-400 text-slate-900 font-semibold px-4 text-sm disabled:opacity-40">Legg til</button>
-		</div>`
+				? `<details id="ml-details" ${keepOpen ? 'open' : ''} class="rounded-lg bg-slate-900 border border-slate-700">
+			<summary class="flex items-center justify-between gap-3 px-3 py-2 text-sm cursor-pointer select-none">
+				<span class="min-w-0 truncate"><span class="text-slate-400">Velg lister:</span> <span class="text-slate-100">${summary}</span></span>
+				<span class="shrink-0 text-xs text-slate-400">${picked.length} av ${mine.length}</span>
+			</summary>
+			<div class="border-t border-slate-700 divide-y divide-slate-800">
+				${mine
+					.map(
+						(l) => `<label class="flex items-center gap-3 px-3 py-3 text-sm cursor-pointer">
+					<input type="checkbox" data-ml="${l.id}" data-item="${l.item_id ?? ''}" ${l.has_item ? 'checked' : ''} class="h-5 w-5 shrink-0 accent-amber-400" />
+					<span class="min-w-0 flex-1 break-words text-slate-100">${esc(l.title)}</span>
+					<span class="shrink-0 text-xs text-slate-500">${l.item_count} ${l.item_count === 1 ? 'film' : 'filmer'}</span>
+				</label>`,
+					)
+					.join('')}
+			</div>
+		</details>`
 				: '<p class="text-slate-400">Du har ingen lister ennå.</p>'
 		}
 		<button id="ml-new-toggle" class="mt-2 w-full rounded-lg bg-slate-900 border border-slate-700 hover:border-amber-400 py-2 text-sm font-semibold">➕ Opprett ny liste med denne filmen</button>
@@ -1352,8 +1364,6 @@ async function initModalLists(movie, mt, message = '') {
 			<button id="ml-create" class="w-full rounded-lg bg-amber-400 text-slate-900 font-semibold py-2 text-sm">Opprett og legg til</button>
 		</div>
 		<p id="ml-msg" class="text-sm mt-2 ${message ? 'text-emerald-300' : 'hidden'}">${esc(message)}</p>`;
-	const sel = $('#ml-select');
-	if (sel && free.length) sel.value = String(free[0].id);
 
 	const item = { tmdb_id: movie.id, media_type: mt, title: movie.title, year: movie.year || null, poster_path: movie.poster_path || null };
 	const fail = (t) => {
@@ -1361,26 +1371,36 @@ async function initModalLists(movie, mt, message = '') {
 		msg.textContent = t;
 		msg.className = 'text-sm mt-2 text-red-400';
 	};
-	const done = (name) => {
-		initModalLists(movie, mt, `✓ Lagt til i «${name}»`);
+	const refresh = (text) => {
+		initModalLists(movie, mt, text, true);
 		if (!$('#tab-lists').classList.contains('hidden')) loadLists();
 	};
+
+	// Kryss av/på: legg til eller fjern filmen med en gang
+	$('#ml-details')?.addEventListener('change', async (e) => {
+		const cb = e.target.closest('[data-ml]');
+		if (!cb) return;
+		const id = Number(cb.dataset.ml);
+		const name = mine.find((l) => l.id === id)?.title ?? '';
+		cb.disabled = true;
+		try {
+			if (cb.checked) {
+				await api(`/api/lists/${id}/items`, { method: 'POST', body: JSON.stringify(item) });
+				refresh(`✓ Lagt til i «${name}»`);
+			} else {
+				await api(`/api/lists/${id}/items/${cb.dataset.item}`, { method: 'DELETE' });
+				refresh(`Fjernet fra «${name}»`);
+			}
+		} catch (err) {
+			cb.checked = !cb.checked;
+			cb.disabled = false;
+			fail(err.message);
+		}
+	});
 
 	$('#ml-new-toggle').addEventListener('click', () => {
 		$('#ml-new').classList.toggle('hidden');
 		if (!$('#ml-new').classList.contains('hidden')) $('#ml-title').focus();
-	});
-
-	$('#ml-add')?.addEventListener('click', async () => {
-		const id = Number(sel.value);
-		$('#ml-add').disabled = true;
-		try {
-			await api(`/api/lists/${id}/items`, { method: 'POST', body: JSON.stringify(item) });
-			done(mine.find((l) => l.id === id)?.title ?? '');
-		} catch (err) {
-			$('#ml-add').disabled = false;
-			fail(err.message);
-		}
 	});
 
 	$('#ml-create').addEventListener('click', async () => {
@@ -1390,7 +1410,7 @@ async function initModalLists(movie, mt, message = '') {
 		try {
 			const r = await api('/api/lists', { method: 'POST', body: JSON.stringify({ username: me, title: name, ranked: $('#ml-ranked').checked }) });
 			await api(`/api/lists/${r.id}/items`, { method: 'POST', body: JSON.stringify(item) });
-			done(name);
+			refresh(`✓ Lagt til i «${name}»`);
 		} catch (err) {
 			$('#ml-create').disabled = false;
 			fail(err.message);
