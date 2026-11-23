@@ -47,7 +47,7 @@ Alle `/api/*`-ruter unntatt `/api/login` krever innloggingscookie.
 | `GET /api/admin/barcode/:code` | (admin) slå opp strekkode (UPCitemdb, 100/dag) og foreslå TMDB-treff |
 | `POST /api/admin/library/add` | (admin) legg til én film med format(er) og evt. strekkode |
 | `PATCH /api/admin/library/:id` | (admin) rett eller fjern TMDB-match |
-| `POST /api/admin/library/rematch` | (admin) prøver å matche titler uten treff på nytt (film og TV), 8 om gangen |
+| `POST /api/admin/library/rematch` | (admin) prøver å matche titler uten treff på nytt (film og TV), 4 om gangen, med OMDb som reserve hvis `OMDB_API_KEY` er satt |
 | `POST /api/admin/library/import` | (admin) importerer opptil 20 filmer om gangen, matcher mot TMDB |
 | `POST /api/admin/reset-pin` | `{username}` (admin) fjerner PIN slik at den kan lages på nytt |
 | `POST /api/admin/login` / `logout` | `{password}` mot `ADMIN_PASSWORD` gir admin-cookie |
@@ -61,3 +61,4 @@ Alle `/api/*`-ruter unntatt `/api/login` krever innloggingscookie.
 - Bibliotek: som admin trykker du «Importer CLZ-CSV…» og velger eksportfilen fra CLZ Movies (kolonnene Title og Format kreves). Filmer matches mot TMDB på tittel og år, og samme film i flere formater slås sammen. Importen kan kjøres på nytt uten duplikater. Anbefalte filmer som finnes i biblioteket merkes med formatet.
 - Biblioteket kan sorteres på tittel, år (nyest/eldst) og regissør (etter etternavn), filtreres på format og tiår, og søkes på tittel eller regissør. Trykk på et regissørnavn for å se alle filmene hans eller hennes. Som admin kan du rette feilmatcher («Rett») og legge til enkeltfilmer med strekkodeskanning (kamera krever https).
 - TV og IMDb: biblioteket kan inneholde TV-serier (media_type `tv`, TMDB). TMDB-id er bare unik innen film eller TV, derfor lagres typen sammen med id-en. Anbefalinger gjelder bare filmer. Alle søkefelt godtar en IMDb-kode eller -lenke, som slås opp via TMDB. «Match på nytt» (admin) rydder titler som «: Season 4» og «Extended directors cut» og søker på film og TV.
+- OMDb (valgfritt): secret `OMDB_API_KEY` (Runtime). Brukes bare av «Match på nytt» når TMDB ikke finner tittelen. IMDb-koden fra OMDb slås opp i TMDB, og treffet merkes som usikkert. Nøkkelen må aldri sjekkes inn (repoet er public).

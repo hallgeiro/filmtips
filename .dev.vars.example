@@ -2,3 +2,5 @@
 APP_PASSWORD=velg-et-passord
 TMDB_API_KEY=din-tmdb-api-nokkel-eller-read-access-token
 ADMIN_PASSWORD=velg-et-admin-passord
+# Valgfri: reserve-oppslag for titler TMDB ikke finner (gratis nøkkel fra omdbapi.com)
+OMDB_API_KEY=

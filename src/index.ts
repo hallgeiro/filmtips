@@ -7,6 +7,7 @@ type Bindings = {
 	APP_PASSWORD: string
 	ADMIN_PASSWORD?: string
 	TMDB_API_KEY: string
+	OMDB_API_KEY?: string
 	USERS: string
 }
 type Ctx = Context<{ Bindings: Bindings }>
@@ -403,7 +404,32 @@ function titleVariants(title: string): { variants: string[]; series: boolean } {
 }
 
 // Finn film eller TV-serie i TMDB ut fra tittel + år. Maks 5 oppslag per tittel.
-async function matchTitle(c: Ctx, rawTitle: string, year: number): Promise<Match> {
+// Reserve: spør OMDb (IMDb-basert) om tittelen, og slå opp IMDb-koden i TMDB. Maks 3 oppslag. Treff merkes «fuzzy» så de kan sjekkes.
+async function omdbMatch(c: Ctx, variants: string[], year: number): Promise<Match | null> {
+	const key = c.env.OMDB_API_KEY
+	if (!key) return null
+	const ask = async (title: string, withYear: boolean): Promise<string | null> => {
+		const u = new URL('https://www.omdbapi.com/')
+		u.searchParams.set('apikey', key)
+		u.searchParams.set('t', title)
+		if (withYear && year) u.searchParams.set('y', String(year))
+		const res = await fetch(u, { cf: { cacheTtl: 2592000, cacheEverything: true } })
+		if (!res.ok) return null
+		const d = await res.json<any>()
+		return d?.Response === 'True' && /^tt\d{6,10}$/.test(d.imdbID ?? '') ? d.imdbID : null
+	}
+	let imdb = await ask(variants[0], true)
+	if (!imdb && year) imdb = await ask(variants[0], false)
+	if (!imdb) return null
+	const f = await tmdb(c, `/find/${imdb}`, { external_source: 'imdb_id', language: 'en-US' })
+	const mv = f.movie_results?.[0]
+	if (mv) return { tmdb_id: mv.id, tmdb_title: mv.title ?? null, poster_path: mv.poster_path ?? null, media_type: 'movie', match: 'fuzzy' }
+	const tv = f.tv_results?.[0]
+	if (tv) return { tmdb_id: tv.id, tmdb_title: tv.name ?? null, poster_path: tv.poster_path ?? null, media_type: 'tv', match: 'fuzzy' }
+	return null
+}
+
+async function matchTitle(c: Ctx, rawTitle: string, year: number, useOmdb = false): Promise<Match> {
 	const none: Match = { tmdb_id: null, tmdb_title: null, poster_path: null, media_type: 'movie', match: 'none' }
 	try {
 		const { variants, series } = titleVariants(rawTitle)
@@ -458,6 +484,7 @@ async function matchTitle(c: Ctx, rawTitle: string, year: number): Promise<Match
 			return eq(r, 'movie', bn) || (bn.length >= 4 && (t.includes(bn) || bn.includes(t)))
 		})
 		if (fuzzy) return mk(fuzzy, 'movie', 'fuzzy')
+		if (useOmdb) return (await omdbMatch(c, variants, year)) ?? none
 		return none
 	} catch {
 		return none
@@ -614,15 +641,15 @@ app.patch('/api/admin/library/:id', async (c) => {
 	return res.meta.changes ? c.json({ ok: true }) : c.json({ error: 'Fant ikke filmen i biblioteket' }, 404)
 })
 
-// Admin: prøv å matche på nytt de som mangler treff (8 om gangen). Klienten sender last_id videre til alle er gått gjennom.
+// Admin: prøv å matche på nytt de som mangler treff (4 om gangen). Klienten sender last_id videre til alle er gått gjennom.
 app.post('/api/admin/library/rematch', async (c) => {
 	if (!(await isAdmin(c))) return c.json({ error: 'Krever admin' }, 403)
 	const body = await c.req.json<{ after_id?: number }>().catch(() => ({} as { after_id?: number }))
 	const after = Math.trunc(Number(body.after_id)) || 0
-	const { results: rows } = await c.env.DB.prepare(`SELECT id, title, year FROM library WHERE tmdb_id IS NULL AND id > ? ORDER BY id LIMIT 8`)
+	const { results: rows } = await c.env.DB.prepare(`SELECT id, title, year FROM library WHERE tmdb_id IS NULL AND id > ? ORDER BY id LIMIT 4`)
 		.bind(after)
 		.all<{ id: number; title: string; year: number }>()
-	const matches = await Promise.all(rows.map((r) => matchTitle(c, r.title, r.year)))
+	const matches = await Promise.all(rows.map((r) => matchTitle(c, r.title, r.year, true)))
 
 	const stmts = rows.flatMap((r, k) => {
 		const m = matches[k]
