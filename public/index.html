@@ -35,6 +35,7 @@
 		<span>Admin:</span>
 		<button id="reset-pin" class="underline hover:text-slate-200">Nullstill PIN for valgt navn</button>
 		<button id="import-clz" class="underline hover:text-slate-200">Importer CLZ-CSV…</button>
+		<button id="rematch" class="underline hover:text-slate-200">Match på nytt (uten treff)</button>
 		<input id="clz-file" type="file" accept=".csv,text/csv" class="hidden" />
 		<span id="import-status" class="text-amber-300"></span>
 	</div>
@@ -46,7 +47,7 @@
 		</nav>
 
 		<section id="tab-search">
-			<input id="q" type="search" placeholder="Søk etter film…" autocomplete="off"
+			<input id="q" type="search" placeholder="Søk etter film eller IMDb-kode (tt1234567)…" autocomplete="off"
 				class="w-full rounded-lg bg-slate-800 border border-slate-700 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-400" />
 			<p id="search-status" class="text-slate-400 text-sm mt-3"></p>
 			<div id="results" class="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-3"></div>
@@ -55,7 +56,7 @@
 		<section id="tab-library" class="hidden">
 			<button id="lib-add" class="hidden mb-3 w-full rounded-lg bg-emerald-600 py-3 text-sm font-semibold hover:bg-emerald-500">➕ Legg til film (strekkode eller tittel)</button>
 			<div class="flex gap-2">
-				<input id="lib-q" type="search" placeholder="Søk tittel eller regissør…" autocomplete="off"
+				<input id="lib-q" type="search" placeholder="Tittel, regissør eller IMDb-kode…" autocomplete="off"
 					class="flex-1 min-w-0 rounded-lg bg-slate-800 border border-slate-700 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-400" />
 				<select id="lib-sort" class="rounded-lg bg-slate-800 border border-slate-700 px-2 text-sm" title="Sorter">
 					<option value="title">Tittel A–Å</option>
@@ -101,7 +102,7 @@
 					class="flex-1 min-w-0 rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400" />
 				<button id="add-lookup" class="rounded-lg bg-slate-900 border border-slate-700 px-3 text-sm hover:border-amber-400">Slå opp</button>
 			</div>
-			<input id="add-q" type="search" placeholder="…eller søk på tittel i TMDB" autocomplete="off"
+			<input id="add-q" type="search" placeholder="…eller søk på tittel eller IMDb-kode" autocomplete="off"
 				class="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400" />
 			<p id="add-status" class="text-sm text-slate-400"></p>
 			<div id="add-results" class="space-y-2"></div>
@@ -121,7 +122,7 @@
 				<h2 class="text-lg font-bold">Rett match</h2>
 				<p id="fix-title" class="text-sm text-slate-400"></p>
 			</div>
-			<input id="fix-q" type="search" placeholder="Søk i TMDB…" autocomplete="off"
+			<input id="fix-q" type="search" placeholder="Søk i TMDB (tittel eller IMDb-kode)…" autocomplete="off"
 				class="w-full rounded-lg bg-slate-900 border border-slate-700 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-400" />
 			<div id="fix-results" class="space-y-2"></div>
 			<div class="flex gap-2">

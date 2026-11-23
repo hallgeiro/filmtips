@@ -250,12 +250,12 @@ async function loadLibrary(reset) {
 				.map(
 					(m) => groupHeading(m) + `
 			<div class="relative">
-			<button ${m.tmdb_id ? `data-movie='${esc(JSON.stringify({ id: m.tmdb_id, title: m.title, year: m.year || null, poster_path: m.poster_path }))}'` : 'disabled'}
+			<button ${m.tmdb_id ? `data-movie='${esc(JSON.stringify({ id: m.tmdb_id, media_type: m.media_type, title: m.title, year: m.year || null, poster_path: m.poster_path }))}'` : 'disabled'}
 				class="lib-item w-full text-left bg-slate-800 rounded-xl overflow-hidden ${m.tmdb_id ? 'hover:ring-2 hover:ring-amber-400' : 'opacity-70'}">
 				<div class="aspect-[2/3] bg-slate-700">${posterTag(m.poster_path, m.title)}</div>
 				<div class="p-2">
 					<div class="text-sm font-medium leading-tight">${esc(m.title)}</div>
-					<div class="text-xs text-slate-400">${m.year || ''} · ${esc(m.formats.split('|').join(' · '))}</div>
+					<div class="text-xs text-slate-400">${m.year || ''}${m.media_type === 'tv' ? ' · TV' : ''} · ${esc(m.formats.split('|').join(' · '))}</div>
 					${m.director ? `<span data-dir="${esc(firstDirector(m.director))}" class="inline-block text-xs text-slate-400 hover:text-amber-300 hover:underline">${esc(firstDirector(m.director))}</span>` : ''}
 					${m.match === 'fuzzy' ? '<div class="text-xs text-amber-400">usikker match</div>' : ''}${m.tmdb_id ? '' : '<div class="text-xs text-slate-500">ikke funnet i TMDB</div>'}
 				</div>
@@ -380,11 +380,11 @@ function renderAddResults(results) {
 	$('#add-results').innerHTML = results
 		.map(
 			(m) => `
-		<button data-add='${esc(JSON.stringify({ id: m.id, title: m.title, year: m.year, poster_path: m.poster_path }))}'
+		<button data-add='${esc(JSON.stringify({ id: m.id, media_type: m.media_type, title: m.title, year: m.year, poster_path: m.poster_path }))}'
 			class="add-pick w-full flex gap-3 text-left bg-slate-900 rounded-lg p-2 hover:ring-2 hover:ring-amber-400">
 			<div class="w-12 shrink-0 aspect-[2/3] bg-slate-700 rounded overflow-hidden">${posterTag(m.poster_path, m.title, 'w92')}</div>
 			<div class="min-w-0">
-				<div class="text-sm font-medium">${esc(m.title)} <span class="text-slate-400">${esc(m.year ?? '')}</span></div>
+				<div class="text-sm font-medium">${esc(m.title)} <span class="text-slate-400">${esc(m.year ?? '')}${m.media_type === 'tv' ? ' · TV' : ''}</span></div>
 				${m.original_title && m.original_title !== m.title ? `<div class="text-xs text-slate-500">${esc(m.original_title)}</div>` : ''}
 				<div class="text-xs text-slate-400 line-clamp-2">${esc(m.overview ?? '')}</div>
 			</div>
@@ -433,7 +433,7 @@ async function searchAdd() {
 	if (q.length < 2) return;
 	$('#add-status').textContent = 'Søker…';
 	try {
-		const { results } = await api('/api/search?q=' + encodeURIComponent(q));
+		const { results } = await api('/api/search?type=multi&q=' + encodeURIComponent(q));
 		$('#add-status').textContent = results.length ? 'Velg riktig film:' : 'Ingen treff.';
 		renderAddResults(results);
 	} catch (err) {
@@ -491,7 +491,7 @@ $('#add-save').addEventListener('click', async () => {
 	try {
 		const r = await api('/api/admin/library/add', {
 			method: 'POST',
-			body: JSON.stringify({ tmdb_id: addSel.id, formats: [...addFormats], barcode: $('#add-code').value }),
+			body: JSON.stringify({ tmdb_id: addSel.id, media_type: addSel.media_type, formats: [...addFormats], barcode: $('#add-code').value }),
 		});
 		$('#add-status').textContent = `✓ ${r.existed ? 'Oppdatert' : 'Lagt til'}: ${r.title}${r.year ? ` (${r.year})` : ''} – ${r.formats.split('|').join(' · ')}. Klar for neste film.`;
 		$('#add-code').value = '';
@@ -531,15 +531,15 @@ async function searchFix() {
 	}
 	$('#fix-results').innerHTML = '<p class="text-sm text-slate-400">Søker…</p>';
 	try {
-		const { results } = await api('/api/search?q=' + encodeURIComponent(q));
+		const { results } = await api('/api/search?type=multi&q=' + encodeURIComponent(q));
 		$('#fix-results').innerHTML = results.length
 			? results
 					.map(
 						(m) => `
-			<button data-pick="${m.id}" class="fix-pick w-full flex gap-3 text-left bg-slate-900 rounded-lg p-2 hover:ring-2 hover:ring-amber-400">
+			<button data-pick="${m.id}" data-mt="${m.media_type}" class="fix-pick w-full flex gap-3 text-left bg-slate-900 rounded-lg p-2 hover:ring-2 hover:ring-amber-400">
 				<div class="w-12 shrink-0 aspect-[2/3] bg-slate-700 rounded overflow-hidden">${posterTag(m.poster_path, m.title, 'w92')}</div>
 				<div class="min-w-0">
-					<div class="text-sm font-medium">${esc(m.title)} <span class="text-slate-400">${esc(m.year ?? '')}</span></div>
+					<div class="text-sm font-medium">${esc(m.title)} <span class="text-slate-400">${esc(m.year ?? '')}${m.media_type === 'tv' ? ' · TV' : ''}</span></div>
 					${m.original_title && m.original_title !== m.title ? `<div class="text-xs text-slate-500">${esc(m.original_title)}</div>` : ''}
 					<div class="text-xs text-slate-400 line-clamp-2">${esc(m.overview)}</div>
 				</div>
@@ -552,10 +552,10 @@ async function searchFix() {
 	}
 }
 
-async function applyFix(tmdbId) {
+async function applyFix(tmdbId, mt = 'movie') {
 	if (!fixTarget) return;
 	try {
-		await api(`/api/admin/library/${fixTarget.id}`, { method: 'PATCH', body: JSON.stringify({ tmdb_id: tmdbId }) });
+		await api(`/api/admin/library/${fixTarget.id}`, { method: 'PATCH', body: JSON.stringify({ tmdb_id: tmdbId, media_type: mt }) });
 		closeFix();
 		loadLibrary(true);
 	} catch (err) {
@@ -570,23 +570,60 @@ $('#fix-q').addEventListener('input', () => {
 });
 $('#fix-results').addEventListener('click', (e) => {
 	const b = e.target.closest('.fix-pick');
-	if (b) applyFix(Number(b.dataset.pick));
+	if (b) applyFix(Number(b.dataset.pick), b.dataset.mt);
 });
 $('#fix-use-id').addEventListener('click', () => {
 	const v = $('#fix-id').value.trim();
-	const id = Number((v.match(/movie\/(\d+)/) || v.match(/^(\d+)$/) || [])[1]);
-	if (!id) {
-		$('#fix-error').textContent = 'Fant ikke en TMDB-id. Lim inn en lenke som themoviedb.org/movie/123 eller bare tallet.';
+	if (/tt\d{6,10}/i.test(v)) {
+		// IMDb-kode eller -lenke: søk den opp og velg fra listen
+		$('#fix-q').value = v.match(/tt\d{6,10}/i)[0];
+		$('#fix-id').value = '';
+		return searchFix();
+	}
+	const m = v.match(/(movie|tv)\/(\d+)/) || v.match(/^()(\d+)$/);
+	if (!m) {
+		$('#fix-error').textContent = 'Fant ikke en TMDB-id. Lim inn en lenke som themoviedb.org/movie/123 eller themoviedb.org/tv/123, en IMDb-kode (tt1234567), eller bare tallet.';
 		$('#fix-error').classList.remove('hidden');
 		return;
 	}
-	applyFix(id);
+	applyFix(Number(m[2]), m[1] || 'movie');
 });
 $('#fix-clear').addEventListener('click', () => {
 	if (confirm('Fjerne TMDB-matchen for denne filmen? Den vises da uten plakat.')) applyFix(null);
 });
 $('#fix-cancel').addEventListener('click', closeFix);
 $('#fix-modal').addEventListener('click', (e) => e.target.id === 'fix-modal' && closeFix());
+
+/* ---------- Match på nytt (admin) ---------- */
+$('#rematch').addEventListener('click', async () => {
+	if (!confirm('Prøve å matche alle filmer uten treff på nytt, også mot TV-serier? Det tar noen minutter. Ikke lukk siden underveis.')) return;
+	const status = $('#import-status');
+	const tot = { exact: 0, fuzzy: 0, tv: 0, none: 0 };
+	let after = 0;
+	let done = 0;
+	try {
+		for (;;) {
+			let r;
+			try {
+				r = await api('/api/admin/library/rematch', { method: 'POST', body: JSON.stringify({ after_id: after }) });
+			} catch {
+				r = await api('/api/admin/library/rematch', { method: 'POST', body: JSON.stringify({ after_id: after }) }); // ett nytt forsøk
+			}
+			if (!r.processed) break;
+			for (const k of Object.keys(tot)) tot[k] += r[k];
+			done += r.processed;
+			after = r.last_id;
+			status.textContent = `Matcher på nytt… ${done} sjekket, ${r.remaining} igjen`;
+			if (!r.remaining) break;
+		}
+		status.textContent = '';
+		alert(`Ferdig: ${done} sjekket.\nNye treff: ${tot.exact + tot.fuzzy} (TV-serier: ${tot.tv}, usikre: ${tot.fuzzy})\nFortsatt uten treff: ${tot.none}`);
+		if (!$('#tab-library').classList.contains('hidden')) loadLibrary(true);
+	} catch (err) {
+		status.textContent = '';
+		alert('Matching feilet: ' + err.message);
+	}
+});
 
 /* ---------- Import fra CLZ (admin) ---------- */
 function parseCSV(text) {
@@ -647,9 +684,9 @@ $('#clz-file').addEventListener('change', async (e) => {
 		const items = groupClz(parseCSV((await file.text()).replace(/^﻿/, '')));
 		if (!confirm(`Importere ${items.length} filmer fra ${file.name}? Dette tar noen minutter. Ikke lukk siden underveis.`)) return;
 		const tot = { exact: 0, fuzzy: 0, none: 0, skipped: 0 };
-		for (let i = 0; i < items.length; i += 20) {
-			status.textContent = `Importerer ${Math.min(i + 20, items.length)} / ${items.length}…`;
-			const batch = items.slice(i, i + 20);
+		for (let i = 0; i < items.length; i += 8) {
+			status.textContent = `Importerer ${Math.min(i + 8, items.length)} / ${items.length}…`;
+			const batch = items.slice(i, i + 8);
 			let res;
 			try {
 				res = await api('/api/admin/library/import', { method: 'POST', body: JSON.stringify({ items: batch }) });
@@ -709,12 +746,12 @@ async function search(q) {
 		$('#results').innerHTML = results
 			.map(
 				(m) => `
-			<button data-movie='${esc(JSON.stringify({ id: m.id, title: m.title, year: m.year, poster_path: m.poster_path, overview: m.overview }))}'
+			<button data-movie='${esc(JSON.stringify({ id: m.id, media_type: m.media_type, title: m.title, year: m.year, poster_path: m.poster_path, overview: m.overview }))}'
 				class="movie text-left bg-slate-800 rounded-xl overflow-hidden hover:ring-2 hover:ring-amber-400">
 				<div class="aspect-[2/3] bg-slate-700">${posterTag(m.poster_path, m.title)}</div>
 				<div class="p-2">
 					<div class="text-sm font-medium leading-tight">${esc(m.title)}</div>
-					<div class="text-xs text-slate-400">${esc(m.year ?? '')}</div>
+					<div class="text-xs text-slate-400">${esc(m.year ?? '')}${m.media_type === 'tv' ? ' · TV' : ''}</div>
 				</div>
 			</button>`,
 			)
@@ -799,6 +836,8 @@ function providerRow(label, list) {
 }
 
 async function openMovie(movie) {
+	const mt = movie.media_type === 'tv' ? 'tv' : 'movie';
+	const isTv = mt === 'tv';
 	$('#modal').classList.remove('hidden');
 	document.body.classList.add('overflow-hidden');
 	$('#modal-body').innerHTML = `
@@ -815,20 +854,24 @@ async function openMovie(movie) {
 		<h3 class="font-semibold mt-5 mb-2">Hvor kan du se den i Norge?</h3>
 		<div id="providers" class="text-sm text-slate-400">Henter…</div>
 
-		<h3 class="font-semibold mt-5 mb-2">Anbefalinger</h3>
-		<div id="recs" class="space-y-2 text-sm text-slate-400">Henter…</div>
+		${
+			isTv
+				? '<p class="text-xs text-slate-500 mt-5">TV-serie: anbefalinger gjelder bare filmer.</p>'
+				: '<h3 class="font-semibold mt-5 mb-2">Anbefalinger</h3><div id="recs" class="space-y-2 text-sm text-slate-400">Henter…</div>'
+		}
 
-		<form id="rec-form" class="mt-5 border-t border-slate-700 pt-4 space-y-3">
+		${isTv ? '' : `<form id="rec-form" class="mt-5 border-t border-slate-700 pt-4 space-y-3">
 			<h3 class="font-semibold">Din anbefaling</h3>
 			<div id="dice" class="flex gap-2"></div>
 			<textarea id="comment" rows="3" maxlength="1000" placeholder="Kommentar (valgfritt)"
 				class="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-400"></textarea>
 			<p id="rec-error" class="text-red-400 text-sm hidden"></p>
 			<button class="w-full rounded-lg bg-amber-400 text-slate-900 font-semibold py-3 hover:bg-amber-300">Lagre anbefaling</button>
-		</form>`;
+		</form>`}`;
 
 	let rating = 0;
 	const renderDice = () => {
+		if (!$('#dice')) return;
 		$('#dice').innerHTML = [1, 2, 3, 4, 5, 6]
 			.map(
 				(n) => `<button type="button" data-n="${n}" aria-label="Terningkast ${n}"
@@ -837,7 +880,7 @@ async function openMovie(movie) {
 			.join('');
 	};
 	renderDice();
-	$('#dice').addEventListener('click', (e) => {
+	$('#dice')?.addEventListener('click', (e) => {
 		const b = e.target.closest('button');
 		if (b) {
 			rating = Number(b.dataset.n);
@@ -846,15 +889,15 @@ async function openMovie(movie) {
 	});
 
 	// Strømmetjenester + eksisterende anbefalinger + bibliotek parallelt
-	api(`/api/library?tmdb_id=${movie.id}`)
+	api(`/api/library?tmdb_id=${movie.id}&media_type=${mt}`)
 		.then(({ results }) => {
 			const el = $('#lib-badge');
 			if (el) el.innerHTML = libBadge(results.map((r) => r.formats).join('|'));
 		})
 		.catch(() => {});
 	const [prov, recs] = await Promise.allSettled([
-		api(`/api/movie/${movie.id}/providers`),
-		api(`/api/recommendations?tmdb_id=${movie.id}`),
+		api(`/api/${mt}/${movie.id}/providers`),
+		isTv ? Promise.resolve({ results: [] }) : api(`/api/recommendations?tmdb_id=${movie.id}`),
 	]);
 
 	if (prov.status === 'fulfilled') {
@@ -872,7 +915,7 @@ async function openMovie(movie) {
 		$('#providers').textContent = 'Kunne ikke hente strømmetjenester.';
 	}
 
-	if (recs.status === 'fulfilled') {
+	if (!isTv && recs.status === 'fulfilled') {
 		const list = recs.value.results;
 		$('#recs').innerHTML = list.length
 			? list
@@ -891,11 +934,11 @@ async function openMovie(movie) {
 			$('#comment').value = mine.comment ?? '';
 			renderDice();
 		}
-	} else {
+	} else if (!isTv) {
 		$('#recs').textContent = 'Kunne ikke hente anbefalinger.';
 	}
 
-	$('#recs').addEventListener('click', async (e) => {
+	$('#recs')?.addEventListener('click', async (e) => {
 		const id = e.target.dataset.del;
 		if (!id || !confirm('Slette denne anbefalingen?')) return;
 		await api(`/api/recommendations/${id}?username=${encodeURIComponent(me)}`, { method: 'DELETE' });
@@ -903,7 +946,7 @@ async function openMovie(movie) {
 		if (!$('#tab-feed').classList.contains('hidden')) loadFeed();
 	});
 
-	$('#rec-form').addEventListener('submit', async (e) => {
+	$('#rec-form')?.addEventListener('submit', async (e) => {
 		e.preventDefault();
 		const err = $('#rec-error');
 		err.classList.add('hidden');
