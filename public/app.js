@@ -1544,7 +1544,7 @@ async function initModalLists(movie, mt, message = '', keepOpen = false) {
 }
 
 // «Karakter» i filmvinduet: snitt, hvem som har gitt hva, og din egen karakter (1–10) som lagres med ett trykk
-async function initRatings(movie, mt, onMine) {
+async function initRatings(movie, mt, onMine, askHow = false) {
 	const box = $('#ratings');
 	if (!box) return;
 	let data;
@@ -1570,6 +1570,15 @@ async function initRatings(movie, mt, onMine) {
 		${
 			me && iSeen
 				? `<div id="viewings" class="mb-3 -mt-1 space-y-2">
+			${
+				askHow && !myViews.length
+					? `<div class="rounded-lg border border-slate-700 bg-slate-900 p-3">
+				<div class="text-sm text-slate-200">Hvordan så du den? <span class="text-xs text-slate-500">(valgfritt)</span></div>
+				<div class="mt-2 flex flex-wrap gap-2">${SEEN_HOW.map(([k, l]) => `<button type="button" data-ask-how="${k}" class="rounded-full border border-slate-700 px-3 py-1 text-sm hover:border-amber-400">${l}</button>`).join('')}</div>
+				<button type="button" data-ask-skip class="mt-2 text-xs text-slate-400 underline">Hopp over</button>
+			</div>`
+					: ''
+			}
 			<div class="text-xs font-semibold text-slate-400">Visninger</div>
 			${myViews
 				.map(
@@ -1577,7 +1586,8 @@ async function initRatings(movie, mt, onMine) {
 				<select data-view-how class="min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm" title="Hvordan så du den?">
 					<option value="">Hvordan?</option>${SEEN_HOW.map(([k, l]) => `<option value="${k}" ${v.how === k ? 'selected' : ''}>${l}</option>`).join('')}
 				</select>
-				<input data-view-on type="date" value="${esc(v.seen_on ?? '')}" class="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm" title="Dato" />
+				<input data-view-on type="date" value="${esc(v.seen_on ?? '')}" class="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm" title="Dato (valgfritt)" />
+				<button type="button" data-view-date class="text-xs text-slate-300 underline">${v.seen_on ? 'Tøm dato' : 'I dag'}</button>
 				<button type="button" data-view-del class="px-2 py-1 text-red-400" aria-label="Fjern visning">✕</button>
 			</div>`,
 				)
@@ -1616,7 +1626,7 @@ async function initRatings(movie, mt, onMine) {
 				method: 'POST',
 				body: JSON.stringify({ tmdb_id: movie.id, media_type: mt, title: movie.title, year: movie.year || null, poster_path: movie.poster_path || null, username: me, rating: n === mine ? null : n }),
 			});
-			initRatings(movie, mt, onMine);
+			initRatings(movie, mt, onMine, n !== mine); // etter ny karakter: spør (valgfritt) om hvordan du så den
 			if (!$('#tab-seen').classList.contains('hidden')) loadSeen();
 		} catch (err) {
 			const m = $('#rate-msg');
@@ -1646,6 +1656,7 @@ async function initRatings(movie, mt, onMine) {
 	});
 
 	// Visninger: hver med egen måte og dato. Endringer lagres med en gang.
+	const viewingBase = { tmdb_id: movie.id, media_type: mt, title: movie.title, year: movie.year || null, poster_path: movie.poster_path || null, username: me };
 	const refreshAfter = () => {
 		initRatings(movie, mt, onMine);
 		if (!$('#tab-seen').classList.contains('hidden')) loadSeen();
@@ -1666,11 +1677,39 @@ async function initRatings(movie, mt, onMine) {
 			});
 			saved('✓ Lagret');
 			if (!$('#tab-seen').classList.contains('hidden')) loadSeen();
+			if (e.target.matches('[data-view-on]')) initRatings(movie, mt, onMine); // oppdater «I dag» / «Tøm dato»
 		} catch (err) {
 			saved(err.message, false);
 		}
 	});
 	$('#viewings')?.addEventListener('click', async (e) => {
+		const ask = e.target.closest('[data-ask-how]');
+		if (ask) {
+			try {
+				await api('/api/viewings', { method: 'POST', body: JSON.stringify({ ...viewingBase, how: ask.dataset.askHow }) });
+				refreshAfter();
+			} catch (err) {
+				saved(err.message, false);
+			}
+			return;
+		}
+		if (e.target.closest('[data-ask-skip]')) return initRatings(movie, mt, onMine);
+		const dateBtn = e.target.closest('[data-view-date]');
+		if (dateBtn) {
+			const row = dateBtn.closest('[data-view]');
+			const input = row.querySelector('[data-view-on]');
+			input.value = input.value ? '' : new Date().toLocaleDateString('sv-SE'); // i dag (YYYY-MM-DD, lokal tid) eller tom
+			try {
+				await api(`/api/viewings/${row.dataset.view}`, {
+					method: 'PATCH',
+					body: JSON.stringify({ how: row.querySelector('[data-view-how]').value || null, seen_on: input.value || null }),
+				});
+				refreshAfter();
+			} catch (err) {
+				saved(err.message, false);
+			}
+			return;
+		}
 		const del = e.target.closest('[data-view-del]');
 		if (del) {
 			try {
@@ -1683,18 +1722,7 @@ async function initRatings(movie, mt, onMine) {
 		}
 		if (e.target.closest('#view-add')) {
 			try {
-				await api('/api/viewings', {
-					method: 'POST',
-					body: JSON.stringify({
-						tmdb_id: movie.id,
-						media_type: mt,
-						title: movie.title,
-						year: movie.year || null,
-						poster_path: movie.poster_path || null,
-						username: me,
-						seen_on: new Date().toLocaleDateString('sv-SE'), // i dag, YYYY-MM-DD i lokal tid
-					}),
-				});
+				await api('/api/viewings', { method: 'POST', body: JSON.stringify(viewingBase) }); // tom visning: måte og dato er valgfrie
 				refreshAfter();
 			} catch (err) {
 				saved(err.message, false);

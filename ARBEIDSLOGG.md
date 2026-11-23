@@ -127,6 +127,8 @@ Sammendrag av oppsett, arkitektur og utviklingsarbeid. Filmtips er en ikke-komme
 
 35. Flere visninger per film: tabell `viewings` (id, tmdb_id, media_type, username, how, seen_on), opprettet i remote D1 før push. Filmvinduet har «Visninger» med én rad per visning (måte + dato, endres og lagres med en gang, ✕ fjerner) og «＋ Legg til visning» (starter på dagens dato). Å legge til en visning markerer filmen som sett. `seen_films.how`/`seen_on` er utgått (aldri brukt til data). «Sett»-fanen viser siste visning og «N visninger», filteret på måte treffer filmer med minst én slik visning, og «Nyeste» sorterer på siste visningsdato. `GET /api/ratings` gir `viewings`. Endringen i punkt 33 er erstattet av dette.
 
+36. Visninger: måte og dato er alltid valgfrie. «＋ Legg til visning» lager en tom visning (ingen forhåndsutfylt dato), og hver rad har «I dag» / «Tøm dato». Etter at man gir en ny karakter og ikke har noen visninger, spørres man (valgfritt) «Hvordan så du den?» med valg (Kino, Streaming …) og «Hopp over». Å velge lager en visning uten dato.
+
 ## Kjente begrensninger og mulige neste steg
 
 - Rundt 30 titler må rettes manuelt med «Rett match» (IMDb-kode eller TMDB-lenke). Det koster ingen OMDb-oppslag.
