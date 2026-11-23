@@ -1346,11 +1346,14 @@ async function initModalLists(movie, mt, message = '', keepOpen = false) {
 			<div class="border-t border-slate-700 divide-y divide-slate-800">
 				${mine
 					.map(
-						(l) => `<label class="flex items-center gap-3 px-3 py-3 text-sm cursor-pointer">
-					<input type="checkbox" data-ml="${l.id}" data-item="${l.item_id ?? ''}" ${l.has_item ? 'checked' : ''} class="h-5 w-5 shrink-0 accent-amber-400" />
-					<span class="min-w-0 flex-1 break-words text-slate-100">${esc(l.title)}</span>
-					<span class="shrink-0 text-xs text-slate-500">${l.item_count} ${l.item_count === 1 ? 'film' : 'filmer'}</span>
-				</label>`,
+						(l) => `<div class="flex items-center">
+					<label class="flex min-w-0 flex-1 items-center gap-3 px-3 py-3 text-sm cursor-pointer">
+						<input type="checkbox" data-ml="${l.id}" data-item="${l.item_id ?? ''}" ${l.has_item ? 'checked' : ''} class="h-5 w-5 shrink-0 accent-amber-400" />
+						<span class="min-w-0 flex-1 break-words text-slate-100">${esc(l.title)}</span>
+						<span class="shrink-0 text-xs text-slate-500">${l.item_count}</span>
+					</label>
+					<button type="button" data-ml-open="${l.id}" class="shrink-0 px-3 py-3 text-sm font-semibold text-amber-300 hover:text-amber-200" aria-label="Åpne listen ${esc(l.title)}">Åpne →</button>
+				</div>`,
 					)
 					.join('')}
 			</div>
@@ -1375,6 +1378,15 @@ async function initModalLists(movie, mt, message = '', keepOpen = false) {
 		initModalLists(movie, mt, text, true);
 		if (!$('#tab-lists').classList.contains('hidden')) loadLists();
 	};
+
+	// «Åpne →»: gå rett til listen i Lister-fanen
+	$('#ml-details')?.addEventListener('click', (e) => {
+		const open = e.target.closest('[data-ml-open]');
+		if (!open) return;
+		listId = Number(open.dataset.mlOpen);
+		closeModal();
+		setTab('lists');
+	});
 
 	// Kryss av/på: legg til eller fjern filmen med en gang
 	$('#ml-details')?.addEventListener('change', async (e) => {
