@@ -84,6 +84,8 @@ Sammendrag av oppsett, arkitektur og utviklingsarbeid. Filmtips er en ikke-komme
 
 14. PIN som passord: på innloggingsskjermen kan navn med PIN logge inn med navn + 6-sifret PIN (`POST /api/pin-login`, `GET /api/login-info`), uten felles passord. Sperre: 5 feil forsøk gir 15 min lås. Nye PIN-er må være 6 siffer (første PIN for et navn krever fortsatt felles passord). Eldre 4–5-sifrede PIN-er virker bare etter passordinnlogging; admin kan nullstille dem for å få 6 siffer.
 
+15. Admin kan lage PIN: velger admin et navn uten PIN, tilbys det å lage PIN (tidligere ble admin aldri spurt). «Nullstill PIN» tømmer valgt navn, så navnet må velges på nytt for å lage ny PIN.
+
 ## Kjente begrensninger og mulige neste steg
 
 - Rundt 30 titler må rettes manuelt med «Rett match» (IMDb-kode eller TMDB-lenke). Det koster ingen OMDb-oppslag.

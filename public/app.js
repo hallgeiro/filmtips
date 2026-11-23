@@ -172,6 +172,10 @@ $('#user').addEventListener('change', async (e) => {
 	const wanted = e.target.value;
 	if (isAdmin) {
 		me = wanted; // admin kan velge fritt uten PIN
+		// Mangler navnet PIN, kan admin velge å lage den nå (trengs for å logge inn med navn + PIN)
+		if (wanted && !hasPin.includes(wanted) && confirm(`${wanted} har ingen PIN. Lage en PIN nå? (Avbryt = fortsett som admin uten PIN)`)) {
+			if (await askPin(wanted)) await refreshConfig();
+		}
 		return;
 	}
 	if (wanted && (await askPin(wanted))) {
@@ -185,9 +189,11 @@ $('#reset-pin').addEventListener('click', async () => {
 	if (!me) return alert('Velg et navn først.');
 	if (!confirm(`Nullstille PIN for ${me}? Personen må lage en ny PIN og blir logget ut av navnet.`)) return;
 	try {
-		await api('/api/admin/reset-pin', { method: 'POST', body: JSON.stringify({ username: me }) });
+		const name = me;
+		await api('/api/admin/reset-pin', { method: 'POST', body: JSON.stringify({ username: name }) });
+		me = ''; // velg navnet på nytt for å lage ny PIN
 		await refreshConfig();
-		alert(`PIN for ${me} er nullstilt.`);
+		alert(`PIN for ${name} er nullstilt. Velg navnet i listen på nytt for å lage en ny PIN (6 siffer).`);
 	} catch (err) {
 		alert(err.message);
 	}
