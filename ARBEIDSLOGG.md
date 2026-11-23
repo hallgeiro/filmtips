@@ -107,6 +107,8 @@ Sammendrag av oppsett, arkitektur og utviklingsarbeid. Filmtips er en ikke-komme
 
 25. Karakter uten anbefaling: tabell `ratings` (tmdb_id, media_type, username, rating 1–10), for film og TV. Filmvinduet har «Karakter» med snitt, hvem som ga hva og et rutenett 1–10 som lagrer med ett trykk (trykk igjen for å fjerne). Karakter i en anbefaling lagres også i `ratings`, og endres karakteren her, følger en eksisterende anbefaling med. Har man en anbefaling, kan karakteren ikke fjernes uten å slette anbefalingen. `recommendations` er bygget om i remote D1 med CHECK 1–10 (gamle karakterer omregnet), og eksisterende karakterer er kopiert til `ratings`.
 
+26. Filmvinduet har bare én karakterskala (under «Karakter»). Anbefalingsskjemaet viser valgt karakter som tekst og bruker den; uten karakter må man gi en først.
+
 ## Kjente begrensninger og mulige neste steg
 
 - Rundt 30 titler må rettes manuelt med «Rett match» (IMDb-kode eller TMDB-lenke). Det koster ingen OMDb-oppslag.

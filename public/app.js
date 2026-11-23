@@ -1395,7 +1395,7 @@ async function initRatings(movie, mt, onMine) {
 		return;
 	}
 	const mine = data.results.find((r) => r.username === me)?.rating ?? 0;
-	if (mine && onMine) onMine(mine);
+	if (onMine) onMine(mine);
 	box.innerHTML = `
 		<div class="text-slate-300">${data.count ? `<span class="text-amber-300 font-semibold">⭐ ${data.avg}/10</span> snitt · ${data.count} ${data.count === 1 ? 'karakter' : 'karakterer'}` : 'Ingen har gitt karakter ennå.'}</div>
 		${data.count ? `<div class="flex flex-wrap gap-2 mt-2">${data.results.map((r) => `<span class="rounded-full bg-slate-900 px-2 py-1 text-xs text-slate-300">${esc(r.username)} <b class="text-amber-300">${r.rating}</b></span>`).join('')}</div>` : ''}
@@ -1418,7 +1418,7 @@ async function initRatings(movie, mt, onMine) {
 				method: 'POST',
 				body: JSON.stringify({ tmdb_id: movie.id, media_type: mt, title: movie.title, poster_path: movie.poster_path || null, username: me, rating: n === mine ? null : n }),
 			});
-			initRatings(movie, mt, mt === 'movie' && n !== mine ? (r) => onMine && onMine(r, true) : null);
+			initRatings(movie, mt, onMine);
 		} catch (err) {
 			const m = $('#rate-msg');
 			m.textContent = err.message;
@@ -1461,7 +1461,7 @@ async function openMovie(movie) {
 
 		${isTv ? '' : `<form id="rec-form" class="mt-5 border-t border-slate-700 pt-4 space-y-3">
 			<h3 class="font-semibold">Din anbefaling</h3>
-			<div id="dice" class="grid grid-cols-5 sm:grid-cols-10 gap-2"></div>
+			<p id="rec-rating" class="text-sm text-slate-400"></p>
 			<textarea id="comment" rows="3" maxlength="1000" placeholder="Kommentar (valgfritt)"
 				class="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-400"></textarea>
 			<p id="rec-error" class="text-red-400 text-sm hidden"></p>
@@ -1470,30 +1470,16 @@ async function openMovie(movie) {
 
 	initModalLists(movie, mt);
 
+	// Karakteren settes i «Karakter» over. Anbefalingen bruker den samme karakteren.
 	let rating = 0;
-	const renderDice = () => {
-		if (!$('#dice')) return;
-		$('#dice').innerHTML = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-			.map(
-				(n) => `<button type="button" data-n="${n}" aria-label="Karakter ${n} av 10"
-					class="rounded-lg py-2 text-lg font-bold ${n === rating ? 'bg-amber-400 text-slate-900' : 'bg-slate-900 border border-slate-700 hover:border-amber-400'}">${n}</button>`,
-			)
-			.join('');
+	const showRecRating = () => {
+		const el = $('#rec-rating');
+		if (el) el.innerHTML = rating ? `Din karakter: <b class="text-amber-300">⭐ ${rating}/10</b> (endres under «Karakter» over)` : 'Gi en karakter under «Karakter» over først.';
 	};
-	renderDice();
-	// Har du allerede gitt karakter (uten anbefaling), forhåndsvelges den i anbefalingsskjemaet
-	initRatings(movie, mt, (r, force) => {
-		if (!rating || force) {
-			rating = r;
-			renderDice();
-		}
-	});
-	$('#dice')?.addEventListener('click', (e) => {
-		const b = e.target.closest('button');
-		if (b) {
-			rating = Number(b.dataset.n);
-			renderDice();
-		}
+	showRecRating();
+	initRatings(movie, mt, (r) => {
+		rating = r;
+		showRecRating();
 	});
 
 	// Strømmetjenester + eksisterende anbefalinger + bibliotek parallelt
@@ -1541,7 +1527,7 @@ async function openMovie(movie) {
 		if (mine) {
 			rating = mine.rating;
 			$('#comment').value = mine.comment ?? '';
-			renderDice();
+			showRecRating();
 		}
 	} else if (!isTv) {
 		$('#recs').textContent = 'Kunne ikke hente anbefalinger.';
@@ -1563,7 +1549,7 @@ async function openMovie(movie) {
 		const err = $('#rec-error');
 		err.classList.add('hidden');
 		if (!me) return showErr('Velg navnet ditt øverst først.');
-		if (!rating) return showErr('Velg karakter 1–10.');
+		if (!rating) return showErr('Gi en karakter først (under «Karakter» over).');
 		try {
 			await api('/api/recommendations', {
 				method: 'POST',
