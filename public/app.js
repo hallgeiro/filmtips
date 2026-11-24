@@ -238,6 +238,11 @@ const firstDirector = (d) => String(d ?? '').split('|')[0].trim();
 
 const fmtLabel = (f) => (f === 'Digital' ? 'Fil' : f);
 
+// Ramme rundt søketreff som finnes i biblioteket (fysisk eller fil). Grønn som merkelappen; amber ved hover for treff som ikke er i biblioteket.
+const LIB_RING = 'ring-2 ring-emerald-400 hover:ring-amber-400';
+const HOVER_RING = 'hover:ring-2 hover:ring-amber-400';
+const libRing = (m) => (m.library_formats ? LIB_RING : HOVER_RING);
+
 function libBadge(formats) {
 	const list = [...new Set(String(formats ?? '').split('|').map((f) => f.trim()).filter(Boolean))];
 	const physical = list.filter((f) => f !== 'Digital');
@@ -899,26 +904,29 @@ function searchItemHtml(m) {
 	const meta = `${esc(m.year ?? '')}${m.media_type === 'tv' ? ' · TV' : ''}`;
 	if (lib.view === 'list') {
 		return `
-			<button data-movie='${data}' class="movie w-full text-left bg-slate-800 rounded-xl overflow-hidden flex items-center gap-3 p-2 hover:ring-2 hover:ring-amber-400">
+			<button data-movie='${data}' class="movie w-full text-left bg-slate-800 rounded-xl overflow-hidden flex items-center gap-3 p-2 ${libRing(m)}">
 				<div class="w-10 shrink-0 aspect-[2/3] bg-slate-700 rounded overflow-hidden">${posterTag(m.poster_path, '', 'w92')}</div>
 				<div class="min-w-0 flex-1">
 					<div class="text-sm font-medium leading-tight">${esc(m.title)}</div>
 					<div class="text-xs text-slate-400">${meta}</div>
+					${libBadge(m.library_formats)}
 				</div>
 			</button>`;
 	}
 	return `
 			<button data-movie='${data}'
-				class="movie text-left bg-slate-800 rounded-xl overflow-hidden hover:ring-2 hover:ring-amber-400">
+				class="movie text-left bg-slate-800 rounded-xl overflow-hidden ${libRing(m)}">
 				<div class="aspect-[2/3] bg-slate-700">${posterTag(m.poster_path, m.title)}</div>
 				<div class="p-2">
 					<div class="text-sm font-medium leading-tight">${esc(m.title)}</div>
 					<div class="text-xs text-slate-400">${meta}</div>
+					${libBadge(m.library_formats)}
 				</div>
 			</button>`;
 }
 
 function renderSearchResults() {
+	$('#search-legend').classList.toggle('hidden', !lastSearchResults.some((m) => m.library_formats));
 	$('#results').innerHTML = lastSearchResults.map(searchItemHtml).join('');
 }
 
@@ -1264,8 +1272,9 @@ function listResultRow(m, source) {
 		: already
 			? '<span class="shrink-0 text-xs text-emerald-300">✓ I listen</span>'
 			: `<button data-list-add='${data}' class="shrink-0 rounded-full bg-amber-400 text-slate-900 text-sm font-semibold px-3 py-1">＋ Legg til</button>`;
-	const extra = source === 'lib' ? `<div class="text-xs text-emerald-300">📀 ${esc(String(m.formats || '').split('|').map(fmtLabel).join(' · '))}</div>` : '';
-	return `<div class="flex items-center gap-3 bg-slate-800 rounded-xl p-2">
+	const extra = source === 'lib' ? `<div class="text-xs text-emerald-300">📀 ${esc(String(m.formats || '').split('|').map(fmtLabel).join(' · '))}</div>` : libBadge(m.library_formats);
+	const ring = source !== 'lib' && m.library_formats ? 'ring-2 ring-emerald-400' : '';
+	return `<div class="flex items-center gap-3 bg-slate-800 rounded-xl p-2 ${ring}">
 		<div class="w-10 shrink-0 aspect-[2/3] bg-slate-700 rounded overflow-hidden">${posterTag(m.poster_path, m.title, 'w92')}</div>
 		<div class="min-w-0 flex-1">
 			<div class="text-sm font-medium leading-tight">${esc(m.title)}</div>
@@ -2228,9 +2237,9 @@ $('#night-q').addEventListener('input', (e) => {
 						.slice(0, 8)
 						.map(
 							(m) => `
-				<div class="flex items-center gap-3 bg-slate-800 rounded-xl p-2">
+				<div class="flex items-center gap-3 bg-slate-800 rounded-xl p-2 ${m.library_formats ? 'ring-2 ring-emerald-400' : ''}">
 					<div class="w-10 shrink-0 aspect-[2/3] bg-slate-700 rounded overflow-hidden">${posterTag(m.poster_path, m.title, 'w92')}</div>
-					<div class="min-w-0 flex-1"><div class="text-sm font-medium leading-tight">${esc(m.title)}</div><div class="text-xs text-slate-400">${esc(m.year ?? '')}</div></div>
+					<div class="min-w-0 flex-1"><div class="text-sm font-medium leading-tight">${esc(m.title)}</div><div class="text-xs text-slate-400">${esc(m.year ?? '')}</div>${libBadge(m.library_formats)}</div>
 					<button data-wish='${esc(JSON.stringify({ tmdb_id: m.id, title: m.title, year: m.year, poster_path: m.poster_path }))}' class="shrink-0 rounded-full bg-amber-400 text-slate-900 text-sm font-semibold px-3 py-1">＋ Ønsk</button>
 				</div>`,
 						)

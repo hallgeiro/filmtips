@@ -276,11 +276,25 @@ async function searchTmdb(c: Ctx, q: string, mode: 'movie' | 'multi', page = '1'
 		.map((r: any) => hitFrom(r, r.media_type))
 }
 
+// Legger `library_formats` på treff som finnes i biblioteket (samme TMDB-id og type), slik at klienten kan merke dem
+async function withLibrary(c: Ctx, hits: Hit[]): Promise<(Hit & { library_formats: string | null })[]> {
+	const ids = [...new Set(hits.map((h) => h.id))]
+	if (!ids.length) return []
+	const { results } = await c.env.DB.prepare(
+		`SELECT tmdb_id, media_type, group_concat(formats, '|') AS formats FROM library WHERE tmdb_id IN (${ids.map(() => '?').join(',')}) GROUP BY tmdb_id, media_type`,
+	)
+		.bind(...ids)
+		.all<{ tmdb_id: number; media_type: string; formats: string }>()
+	const byKey = new Map(results.map((r) => [`${r.media_type}:${r.tmdb_id}`, r.formats]))
+	return hits.map((h) => ({ ...h, library_formats: byKey.get(`${h.media_type}:${h.id}`) ?? null }))
+}
+
 app.get('/api/search', async (c) => {
 	const q = (c.req.query('q') ?? '').trim()
 	if (q.length < 2) return c.json({ results: [] })
 	try {
-		return c.json({ results: await searchTmdb(c, q, c.req.query('type') === 'multi' ? 'multi' : 'movie', c.req.query('page') ?? '1') })
+		const hits = await searchTmdb(c, q, c.req.query('type') === 'multi' ? 'multi' : 'movie', c.req.query('page') ?? '1')
+		return c.json({ results: await withLibrary(c, hits) })
 	} catch {
 		return c.json({ error: 'Søket mot TMDB feilet' }, 502)
 	}
