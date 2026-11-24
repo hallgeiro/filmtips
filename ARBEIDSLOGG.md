@@ -24,6 +24,7 @@ Sammendrag av oppsett, arkitektur og utviklingsarbeid. Filmtips er en ikke-komme
 | `public/index.html` | UI: login, faner (Søk / Anbefalinger / Bibliotek), modaler |
 | `public/app.js` | Frontend-logikk |
 | `README.md` | Oppsett og API-oversikt |
+| `CLAUDE.md` | Prosjektkontekst og arbeidsmåte for Claude |
 | `.dev.vars.example` | Mal for lokale secrets |
 
 ## Autentisering
@@ -139,6 +140,20 @@ Sammendrag av oppsett, arkitektur og utviklingsarbeid. Filmtips er en ikke-komme
 42. Filmkveld: varsel i appen (banner + prikk) om kvelder man ikke har svart på. `GET /api/nights` returnerer nå `rsvps` og `vote_users` per kveld, slik at klienten kan se hva *du* mangler. Ingen databaseendring. Push-varsel og e-post ble vurdert og valgt bort: appen kjenner bare navn, og push krever hjemmeskjerm-app og nøkler.
 43. Søketreff som finnes i biblioteket merkes med grønn merkelapp. `/api/search` slår opp `library` for treffene (`withLibrary`, ett spørsmål per søk). Ingen databaseendring.
 44. Admin kan legge en film eller serie i biblioteket direkte fra filmvinduet (åpnes fra søketreff): «＋ Legg til i biblioteket», velg format, lagre. Bruker `POST /api/admin/library/add` (bare admin; finnes filmen fra før, legges formatet til). Søketreffet og bibliotekslista oppdateres, så den grønne merkelappen vises med en gang. Ingen databaseendring.
+
+45. Sikkerhetsgjennomgang av innloggingen (24.11.2026), kun lesing av `src/index.ts`, ingen kodeendring. I orden: identitet hentes fra cookie (`getIdentity`), ikke fra `username` i forespørselen; cookiene har `httpOnly`, `secure` og `SameSite=Lax`; PIN og signaturer sammenlignes med `timingSafeEqual`; `/api/admin/login` og `/api/identity` ligger etter `/api/*`-mellomvaren og krever derfor allerede gyldig PIN-identitet. Funn står under «Gjøremål». Også ryddet: de fem sammenslåtte `claude/*`-grenene kan slettes (Claude kan ikke slette grener på GitHub herfra).
+
+## Gjøremål
+
+Åpne punkter etter sikkerhetsgjennomgangen (punkt 45). Kryss av eller fjern når de er gjort, og legg en linje i kronologien.
+
+- [ ] **PIN-lås kan omgås med samtidige forsøk** (`checkPin`). `failed_attempts` leses og skrives tilbake som `+1` fra koden, så mange parallelle gjetninger ser alle samme tall og teller som ett. Rett med atomisk `UPDATE user_pins SET failed_attempts = failed_attempts + 1 ... RETURNING` og la resultatet avgjøre låsen. Ingen databaseendring. Test mot SQLite, deretter pull request.
+- [ ] **Alle navn i `USERS` må ha PIN.** Første som velger et navn uten PIN får det (`create: true`), og navnelisten er åpen via `/api/login-info`. Lag PIN for alle, eller fjern ubrukte navn fra `wrangler.jsonc`. Nullstill også eldre 4–5-sifrede PIN-er (admin → «Nullstill PIN»).
+- [ ] **Langt, tilfeldig `ADMIN_PASSWORD`** (Cloudflare → Runtime secrets). Admin-cookien er en HMAC av en fast tekst fra det offentlige repoet med passordet som nøkkel, gjelder i 90 dager og kan ikke trekkes tilbake før passordet byttes. «Logg ut» fjerner bare cookien i nettleseren.
+- [ ] **Slå av grenbygg i Cloudflare** (Workers & Pages → filmtips → Settings → Build → Branch control) så grenbyggene ikke gir feilmeldinger. Bare bygget for `main` teller.
+- [ ] **Slett gamle grener på GitHub**: `claude/arbeidsmaate`, `claude/bibliotek-ramme-sok`, `claude/filmkveld-pamelding`, `claude/filmkveld-varsel`, `claude/legg-til-bibliotek-fra-sok` (alle sammenslåtte, ingen commits utenfor `main`). Alternativ: slå på «Automatically delete head branches» i repoets innstillinger.
+- [ ] **README mangler** `POST /api/nights/:id/rsvp` og tabellen `night_rsvps`, og `library_formats` på `/api/search`-treff. Filtabellen over mangler `CLAUDE.md`.
+- [ ] (Valgfritt, lav prioritet) PBKDF2 bruker 100 000 runder, under dagens anbefaling. Ikke verdt å endre så lenge D1 ikke er eksponert.
 
 ## Kjente begrensninger og mulige neste steg
 
