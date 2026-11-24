@@ -812,7 +812,9 @@ app.get('/api/nights', async (c) => {
 		`SELECT n.*, (SELECT COUNT(*) FROM wishes w WHERE w.night_id = n.id) AS wish_count,
 		        (SELECT w.title FROM wishes w WHERE w.id = n.winner_wish_id) AS winner_title,
 		        (SELECT w.poster_path FROM wishes w WHERE w.id = n.winner_wish_id) AS winner_poster,
-		        (SELECT COUNT(*) FROM night_rsvps r WHERE r.night_id = n.id AND r.status = 'yes') AS yes_count
+		        (SELECT COUNT(*) FROM night_rsvps r WHERE r.night_id = n.id AND r.status = 'yes') AS yes_count,
+		        (SELECT group_concat(r.username || ':' || r.status, '|') FROM night_rsvps r WHERE r.night_id = n.id) AS rsvps,
+		        (SELECT group_concat(v.username, '|') FROM wish_votes v JOIN wishes w ON w.id = v.wish_id WHERE w.night_id = n.id) AS vote_users
 		 FROM movie_nights n
 		 ORDER BY (n.status = 'open') DESC, CASE WHEN n.status = 'open' THEN n.date END ASC, n.date DESC`,
 	).all()
