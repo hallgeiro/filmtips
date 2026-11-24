@@ -1785,6 +1785,57 @@ async function initRatings(movie, mt, onMine, askHow = false) {
 	});
 }
 
+// Admin: legg filmen eller serien i biblioteket direkte fra filmvinduet (samme rute som «Legg til film»).
+// Er den allerede i biblioteket, legges formatet til. Søketreffet og bibliotekslista oppdateres etterpå.
+function initLibAdd(movie, mt) {
+	const box = $('#lib-add-box');
+	if (!box || !isAdmin) return;
+	let open = false;
+	const valgt = new Set();
+	const draw = (message = '') => {
+		box.innerHTML = open
+			? `<div class="mt-2 rounded-xl bg-slate-900 p-3 space-y-2">
+				<div class="text-sm font-semibold">Velg format</div>
+				<div class="flex flex-wrap gap-2">${FORMAT_FILTERS.map(
+					(f) => `<button type="button" data-lib-fmt="${esc(f)}" aria-pressed="${valgt.has(f)}" class="rounded-full px-3 min-h-[40px] text-sm ${valgt.has(f) ? 'bg-amber-400 text-slate-900 font-semibold' : 'bg-slate-800 border border-slate-700 text-slate-300'}">${f === 'Digital' ? '💾 Fil (digital)' : esc(f)}</button>`,
+				).join('')}</div>
+				<div class="flex items-center gap-4"><button type="button" data-lib-save class="rounded-lg bg-emerald-600 font-semibold px-4 min-h-[40px]">Legg til</button><button type="button" data-lib-cancel class="text-slate-400 underline min-h-[40px]">Avbryt</button></div>
+				<p id="lib-add-error" class="text-red-400 text-sm hidden"></p>
+			</div>`
+			: `<button type="button" data-lib-open class="mt-2 rounded-full bg-emerald-700 text-white text-sm px-4 min-h-[40px]">＋ Legg til i biblioteket</button>${message}`;
+	};
+	box.addEventListener('click', async (e) => {
+		const fmt = e.target.closest('[data-lib-fmt]');
+		if (e.target.closest('[data-lib-open]')) open = true;
+		else if (e.target.closest('[data-lib-cancel]')) open = false;
+		else if (fmt) valgt.has(fmt.dataset.libFmt) ? valgt.delete(fmt.dataset.libFmt) : valgt.add(fmt.dataset.libFmt);
+		else if (e.target.closest('[data-lib-save]')) {
+			if (!valgt.size) {
+				$('#lib-add-error').textContent = 'Velg minst ett format.';
+				return $('#lib-add-error').classList.remove('hidden');
+			}
+			try {
+				const r = await api('/api/admin/library/add', { method: 'POST', body: JSON.stringify({ tmdb_id: movie.id, media_type: mt, formats: [...valgt] }) });
+				open = false;
+				valgt.clear();
+				$('#lib-badge').innerHTML = libBadge(r.formats);
+				const hit = lastSearchResults.find((m) => m.id === movie.id && m.media_type === mt);
+				if (hit) {
+					hit.library_formats = r.formats;
+					renderSearchResults();
+				}
+				if (!$('#tab-library').classList.contains('hidden')) loadLibrary(true);
+				return draw(`<p class="text-sm text-emerald-300 mt-2">✓ ${r.existed ? 'Oppdatert' : 'Lagt til'} i biblioteket: ${esc(r.formats.split('|').map(fmtLabel).join(' · '))}</p>`);
+			} catch (err) {
+				$('#lib-add-error').textContent = err.message;
+				return $('#lib-add-error').classList.remove('hidden');
+			}
+		} else return;
+		draw();
+	});
+	draw();
+}
+
 async function openMovie(movie) {
 	const mt = movie.media_type === 'tv' ? 'tv' : 'movie';
 	const isTv = mt === 'tv';
@@ -1798,6 +1849,7 @@ async function openMovie(movie) {
 				<h2 class="text-xl font-bold leading-tight pr-10">${esc(movie.title)}</h2>
 				<div class="text-slate-400 text-sm">${esc(movie.year ?? '')}</div>
 				<div id="lib-badge"></div>
+				<div id="lib-add-box"></div>
 				${movie.overview ? `<p class="text-sm text-slate-300 mt-2 line-clamp-6">${esc(movie.overview)}</p>` : ''}
 			</div>
 		</div>
@@ -1828,6 +1880,7 @@ async function openMovie(movie) {
 		</form>`}`;
 
 	initModalLists(movie, mt);
+	initLibAdd(movie, mt);
 
 	// Karakteren settes i «Karakter» over. Anbefalingen bruker den samme karakteren.
 	let rating = 0;
