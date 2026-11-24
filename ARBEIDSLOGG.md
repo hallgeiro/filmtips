@@ -138,6 +138,7 @@ Sammendrag av oppsett, arkitektur og utviklingsarbeid. Filmtips er en ikke-komme
 41. Filmkveld: påmelding (`night_rsvps`, `POST /api/nights/:id/rsvp`) og penere visning på mobil (vinnerplakat, større plakater, påmeldingsknapper på 44 px). **Tabellen ble opprettet i remote D1 før koden ble slått sammen.** Testet i Chromium (390 og 1100 px) med mock-API.
 42. Filmkveld: varsel i appen (banner + prikk) om kvelder man ikke har svart på. `GET /api/nights` returnerer nå `rsvps` og `vote_users` per kveld, slik at klienten kan se hva *du* mangler. Ingen databaseendring. Push-varsel og e-post ble vurdert og valgt bort: appen kjenner bare navn, og push krever hjemmeskjerm-app og nøkler.
 43. Søketreff som finnes i biblioteket merkes med grønn merkelapp. `/api/search` slår opp `library` for treffene (`withLibrary`, ett spørsmål per søk). Ingen databaseendring.
+44. Admin kan legge en film eller serie i biblioteket direkte fra filmvinduet (åpnes fra søketreff): «＋ Legg til i biblioteket», velg format, lagre. Bruker `POST /api/admin/library/add` (bare admin; finnes filmen fra før, legges formatet til). Søketreffet og bibliotekslista oppdateres, så den grønne merkelappen vises med en gang. Ingen databaseendring.
 
 ## Kjente begrensninger og mulige neste steg
 
