@@ -793,6 +793,7 @@ app.post('/api/lists/:id/items/:itemId/move', async (c) => {
 /* ---------- Filmkveld ---------- */
 
 const MAX_WISHES = 3 // ønsker per person per kveld
+const RSVP_STATUSER = ['yes', 'maybe', 'no'] // påmelding til filmkveld
 
 // Navnet man handler som: uten admin må det være ens egen bekreftede identitet
 async function actAs(c: Ctx, name: unknown): Promise<{ user: string } | { error: string; status: 400 | 403 }> {
@@ -809,7 +810,9 @@ async function actAs(c: Ctx, name: unknown): Promise<{ user: string } | { error:
 app.get('/api/nights', async (c) => {
 	const { results } = await c.env.DB.prepare(
 		`SELECT n.*, (SELECT COUNT(*) FROM wishes w WHERE w.night_id = n.id) AS wish_count,
-		        (SELECT w.title FROM wishes w WHERE w.id = n.winner_wish_id) AS winner_title
+		        (SELECT w.title FROM wishes w WHERE w.id = n.winner_wish_id) AS winner_title,
+		        (SELECT w.poster_path FROM wishes w WHERE w.id = n.winner_wish_id) AS winner_poster,
+		        (SELECT COUNT(*) FROM night_rsvps r WHERE r.night_id = n.id AND r.status = 'yes') AS yes_count
 		 FROM movie_nights n
 		 ORDER BY (n.status = 'open') DESC, CASE WHEN n.status = 'open' THEN n.date END ASC, n.date DESC`,
 	).all()
@@ -830,7 +833,30 @@ app.get('/api/nights/:id', async (c) => {
 	const wishes = results
 		.map((w) => ({ ...w, voters: w.voters ? String(w.voters).split('|') : [] }))
 		.sort((a, b) => b.voters.length - a.voters.length || a.id - b.id)
-	return c.json({ night, wishes, max_wishes: MAX_WISHES })
+	const rsvps = await c.env.DB.prepare(`SELECT username, status FROM night_rsvps WHERE night_id = ?`).bind(id).all<{ username: string; status: string }>()
+	return c.json({ night, wishes, max_wishes: MAX_WISHES, rsvps: rsvps.results, users: getUsers(c.env) })
+})
+
+// Svar på om du kommer (yes / maybe / no), eller ta svaret tilbake (status: null). Virker også etter at vinneren er valgt.
+app.post('/api/nights/:id/rsvp', async (c) => {
+	const id = Number(c.req.param('id'))
+	const b = await c.req.json<any>().catch(() => null)
+	if (!b) return c.json({ error: 'Ugyldig JSON' }, 400)
+	const status = b.status === null ? null : String(b.status)
+	if (status !== null && !RSVP_STATUSER.includes(status)) return c.json({ error: 'Ugyldig svar' }, 400)
+	const who = await actAs(c, b.username)
+	if ('error' in who) return c.json({ error: who.error }, who.status)
+	const night = await c.env.DB.prepare(`SELECT id FROM movie_nights WHERE id = ?`).bind(id).first()
+	if (!night) return c.json({ error: 'Fant ikke filmkvelden' }, 404)
+	if (status === null) await c.env.DB.prepare(`DELETE FROM night_rsvps WHERE night_id = ? AND username = ?`).bind(id, who.user).run()
+	else
+		await c.env.DB.prepare(
+			`INSERT INTO night_rsvps (night_id, username, status) VALUES (?, ?, ?)
+			 ON CONFLICT (night_id, username) DO UPDATE SET status = excluded.status, updated_at = datetime('now')`,
+		)
+			.bind(id, who.user, status)
+			.run()
+	return c.json({ ok: true, status })
 })
 
 // Admin: opprett, endre (velg vinner / åpne igjen) og slett filmkvelder
@@ -868,6 +894,7 @@ app.delete('/api/admin/nights/:id', async (c) => {
 	await c.env.DB.batch([
 		c.env.DB.prepare(`DELETE FROM wish_votes WHERE wish_id IN (SELECT id FROM wishes WHERE night_id = ?)`).bind(id),
 		c.env.DB.prepare(`DELETE FROM wishes WHERE night_id = ?`).bind(id),
+		c.env.DB.prepare(`DELETE FROM night_rsvps WHERE night_id = ?`).bind(id),
 		c.env.DB.prepare(`DELETE FROM movie_nights WHERE id = ?`).bind(id),
 	])
 	return c.json({ ok: true })
