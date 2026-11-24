@@ -904,6 +904,7 @@ function searchItemHtml(m) {
 				<div class="min-w-0 flex-1">
 					<div class="text-sm font-medium leading-tight">${esc(m.title)}</div>
 					<div class="text-xs text-slate-400">${meta}</div>
+					${libBadge(m.library_formats)}
 				</div>
 			</button>`;
 	}
@@ -914,11 +915,13 @@ function searchItemHtml(m) {
 				<div class="p-2">
 					<div class="text-sm font-medium leading-tight">${esc(m.title)}</div>
 					<div class="text-xs text-slate-400">${meta}</div>
+					${libBadge(m.library_formats)}
 				</div>
 			</button>`;
 }
 
 function renderSearchResults() {
+	$('#search-legend').classList.toggle('hidden', !lastSearchResults.some((m) => m.library_formats));
 	$('#results').innerHTML = lastSearchResults.map(searchItemHtml).join('');
 }
 
@@ -1264,7 +1267,7 @@ function listResultRow(m, source) {
 		: already
 			? '<span class="shrink-0 text-xs text-emerald-300">✓ I listen</span>'
 			: `<button data-list-add='${data}' class="shrink-0 rounded-full bg-amber-400 text-slate-900 text-sm font-semibold px-3 py-1">＋ Legg til</button>`;
-	const extra = source === 'lib' ? `<div class="text-xs text-emerald-300">📀 ${esc(String(m.formats || '').split('|').map(fmtLabel).join(' · '))}</div>` : '';
+	const extra = source === 'lib' ? `<div class="text-xs text-emerald-300">📀 ${esc(String(m.formats || '').split('|').map(fmtLabel).join(' · '))}</div>` : libBadge(m.library_formats);
 	return `<div class="flex items-center gap-3 bg-slate-800 rounded-xl p-2">
 		<div class="w-10 shrink-0 aspect-[2/3] bg-slate-700 rounded overflow-hidden">${posterTag(m.poster_path, m.title, 'w92')}</div>
 		<div class="min-w-0 flex-1">
@@ -2230,7 +2233,7 @@ $('#night-q').addEventListener('input', (e) => {
 							(m) => `
 				<div class="flex items-center gap-3 bg-slate-800 rounded-xl p-2">
 					<div class="w-10 shrink-0 aspect-[2/3] bg-slate-700 rounded overflow-hidden">${posterTag(m.poster_path, m.title, 'w92')}</div>
-					<div class="min-w-0 flex-1"><div class="text-sm font-medium leading-tight">${esc(m.title)}</div><div class="text-xs text-slate-400">${esc(m.year ?? '')}</div></div>
+					<div class="min-w-0 flex-1"><div class="text-sm font-medium leading-tight">${esc(m.title)}</div><div class="text-xs text-slate-400">${esc(m.year ?? '')}</div>${libBadge(m.library_formats)}</div>
 					<button data-wish='${esc(JSON.stringify({ tmdb_id: m.id, title: m.title, year: m.year, poster_path: m.poster_path }))}' class="shrink-0 rounded-full bg-amber-400 text-slate-900 text-sm font-semibold px-3 py-1">＋ Ønsk</button>
 				</div>`,
 						)
