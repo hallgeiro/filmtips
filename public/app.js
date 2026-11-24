@@ -9,6 +9,12 @@ const esc = (s) =>
 let users = [];
 let isAdmin = false;
 let me = '';
+// Varsel om filmkveld (funksjonene står under «Varsel om filmkveld»)
+const NIGHT_HIDDEN_KEY = 'filmtips_skjulte_kvelder';
+const NIGHT_CHECK_MIN_MS = 60000; // ikke spør serveren oftere enn dette når appen kommer tilbake i fokus
+let pendingNights = [];
+let lastNightCheck = 0;
+
 let identity = null; // navn bekreftet med PIN av serveren (null = ikke valgt ennå)
 let hasPin = [];
 let searchTimer;
@@ -139,6 +145,7 @@ async function refreshConfig() {
 	}
 	renderAdmin();
 	renderUser();
+	checkNights();
 }
 
 function askPin(name) {
@@ -858,6 +865,7 @@ function setTab(tab) {
 	$('#tab-library').classList.toggle('hidden', tab !== 'library');
 	$('#tab-nights').classList.toggle('hidden', tab !== 'nights');
 	$('#tab-lists').classList.toggle('hidden', tab !== 'lists');
+	renderNightBanner();
 	if (tab === 'lists') applyListsSub();
 	if (tab === 'nights') loadNights();
 	if (tab === 'feed') loadFeed();
@@ -1926,6 +1934,74 @@ async function openMovie(movie) {
 
 start();
 
+/* ---------- Varsel om filmkveld ---------- */
+function hiddenNights() {
+	try {
+		return JSON.parse(localStorage.getItem(NIGHT_HIDDEN_KEY) || '[]');
+	} catch {
+		return [];
+	}
+}
+
+// Hva du ennå ikke har gjort på en kveld som ikke er over: svare på om du kommer, og foreslå eller stemme på film (bare mens kvelden er åpen)
+function nightTodo(n, today) {
+	if (!me || n.date < today) return [];
+	const todo = [];
+	const answered = String(n.rsvps ?? '').split('|').some((r) => r.split(':')[0] === me);
+	if (!answered) todo.push('si om du kommer');
+	const voted = String(n.vote_users ?? '').split('|').includes(me);
+	if (n.status === 'open' && !voted) todo.push('foreslå eller stem på film');
+	return todo;
+}
+
+async function checkNights() {
+	lastNightCheck = Date.now();
+	try {
+		const { results } = await api('/api/nights');
+		const today = new Date().toLocaleDateString('sv-SE'); // YYYY-MM-DD i lokal tid
+		pendingNights = results.map((n) => ({ n, todo: nightTodo(n, today) })).filter((x) => x.todo.length);
+	} catch {
+		pendingNights = [];
+	}
+	renderNightBanner();
+}
+
+function renderNightBanner() {
+	$('#nights-dot').classList.toggle('hidden', !pendingNights.length);
+	const onNights = !$('#tab-nights').classList.contains('hidden');
+	const hidden = hiddenNights();
+	const shown = onNights ? [] : pendingNights.filter((x) => !hidden.includes(x.n.id));
+	$('#night-banner').classList.toggle('hidden', !shown.length);
+	$('#night-banner').innerHTML = shown
+		.map(
+			({ n, todo }) => `
+		<div class="rounded-xl bg-amber-400/15 border border-amber-400/40 p-3 text-sm">
+			<div>🎬 <b>Filmkveld: ${esc(n.title)}</b> <span class="text-slate-300">${esc(nightDate(n.date))} · ${nightWhen(n.date)}</span></div>
+			<div class="text-slate-300 mt-1">Du kan ${todo.map(esc).join(' og ')}.</div>
+			<div class="mt-2 flex gap-4"><button data-banner-open="${n.id}" class="rounded-full bg-amber-400 text-slate-900 font-semibold px-4 min-h-[40px]">Åpne</button><button data-banner-hide="${n.id}" class="text-slate-400 underline min-h-[40px]">Skjul</button></div>
+		</div>`,
+		)
+		.join('');
+}
+
+$('#night-banner').addEventListener('click', (e) => {
+	const open = e.target.closest('[data-banner-open]');
+	const hide = e.target.closest('[data-banner-hide]');
+	if (open) {
+		nightId = Number(open.dataset.bannerOpen);
+		setTab('nights');
+	} else if (hide) {
+		try {
+			localStorage.setItem(NIGHT_HIDDEN_KEY, JSON.stringify([...hiddenNights(), Number(hide.dataset.bannerHide)]));
+		} catch {}
+		renderNightBanner();
+	}
+});
+
+document.addEventListener('visibilitychange', () => {
+	if (document.visibilityState === 'visible' && me && Date.now() - lastNightCheck > NIGHT_CHECK_MIN_MS) checkNights();
+});
+
 /* ---------- Filmkveld ---------- */
 const RSVP_VALG = [
 	['yes', '✅ Kommer'],
@@ -2081,6 +2157,7 @@ async function openNight(id) {
 					})
 					.join('')
 			: '<p class="text-sm text-slate-400">Ingen ønsker ennå. Søk opp en film over og bli den første!</p>';
+		checkNights();
 	} catch (err) {
 		alert(err.message);
 		nightId = null;
