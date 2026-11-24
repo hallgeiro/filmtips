@@ -3,7 +3,8 @@
 **Filmtips** er en ikke-kommersiell filmapp for familie og venner (anbefalinger, bibliotek,
 lister, «sett», filmkveld). Cloudflare Worker (Hono, TypeScript) + D1 + vanlig JS i `public/`.
 Struktur, API-ruter, valg og historikk: [ARBEIDSLOGG.md](ARBEIDSLOGG.md). Les den før større
-endringer, og legg nye punkter i kronologien når noe endres. Oppsett: [README.md](README.md).
+endringer, og legg nye punkter i kronologien når noe endres. Åpne gjøremål står i
+[ARBEIDSLOGG.md](ARBEIDSLOGG.md) under «Gjøremål». Oppsett: [README.md](README.md).
 
 Live: <https://filmtips.hallgeirolsen.com>. Språk i appen, kommentarer og dokumentasjon: norsk bokmål.
 
