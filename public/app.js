@@ -1927,12 +1927,55 @@ async function openMovie(movie) {
 start();
 
 /* ---------- Filmkveld ---------- */
+const RSVP_VALG = [
+	['yes', '✅ Kommer'],
+	['maybe', '🤔 Kanskje'],
+	['no', '❌ Kan ikke'],
+];
+const RSVP_GRUPPER = [
+	['yes', 'Kommer'],
+	['maybe', 'Kanskje'],
+	['no', 'Kan ikke'],
+];
 let nightId = null;
 let nightTimer;
 const nightDate = (d) => {
 	const s = new Date(d + 'T12:00:00').toLocaleDateString('nb-NO', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 	return s.charAt(0).toUpperCase() + s.slice(1);
 };
+
+// «i dag», «i morgen», «om 3 dager» eller «for 2 dager siden» ut fra datoen (YYYY-MM-DD)
+const nightWhen = (d) => {
+	const dager = Math.round((new Date(d + 'T12:00:00') - new Date(new Date().toDateString() + ' 12:00:00')) / 86400000);
+	if (dager === 0) return 'i dag';
+	if (dager === 1) return 'i morgen';
+	if (dager > 1) return `om ${dager} dager`;
+	return dager === -1 ? 'i går' : `for ${-dager} dager siden`;
+};
+
+// Påmelding: tre knapper for ditt svar, og hvem som har svart hva (inkludert de som ikke har svart)
+function rsvpHtml(rsvps, users) {
+	const mine = rsvps.find((r) => r.username === me)?.status ?? null;
+	const knapper = RSVP_VALG.map(
+		([v, tekst]) =>
+			`<button data-rsvp="${v}" aria-pressed="${mine === v}" class="min-h-[44px] rounded-xl text-sm px-2 ${mine === v ? 'bg-amber-400 text-slate-900 font-semibold' : 'bg-slate-700'}">${tekst}</button>`,
+	).join('');
+	const gruppe = ([v, navn]) => {
+		const liste = rsvps.filter((r) => r.status === v).map((r) => esc(r.username));
+		return liste.length ? `<div><span class="text-slate-400">${navn} (${liste.length}):</span> ${liste.join(', ')}</div>` : '';
+	};
+	const svart = new Set(rsvps.map((r) => r.username));
+	const ikkeSvart = users.filter((u) => !svart.has(u)).map(esc);
+	return `
+		<div class="mt-3 rounded-xl bg-slate-800 p-3">
+			<div class="text-sm font-semibold mb-2">Kommer du?</div>
+			${me ? `<div class="grid grid-cols-3 gap-2">${knapper}</div>` : '<p class="text-sm text-slate-400">Velg navnet ditt øverst for å svare.</p>'}
+			<div class="mt-3 space-y-1 text-sm">
+				${RSVP_GRUPPER.map(gruppe).join('')}
+				${ikkeSvart.length ? `<div><span class="text-slate-400">Ikke svart (${ikkeSvart.length}):</span> <span class="text-slate-400">${ikkeSvart.join(', ')}</span></div>` : ''}
+			</div>
+		</div>`;
+}
 
 async function loadNights() {
 	$('#night-form').classList.toggle('hidden', !isAdmin);
@@ -1946,11 +1989,15 @@ async function loadNights() {
 		$('#nights-list').innerHTML = results
 			.map(
 				(n) => `
-			<button data-night="${n.id}" class="w-full text-left bg-slate-800 rounded-xl p-3 hover:ring-2 hover:ring-amber-400 ${n.status === 'open' ? '' : 'opacity-70'}">
-				<div class="font-semibold">${esc(n.title)}</div>
-				<div class="text-sm text-slate-400">${esc(nightDate(n.date))}</div>
-				<div class="text-xs mt-1 ${n.status === 'open' ? 'text-emerald-300' : 'text-amber-300'}">
-					${n.status === 'open' ? `Åpen · ${n.wish_count} ønske${n.wish_count === 1 ? '' : 'r'}` : `🏆 ${esc(n.winner_title || 'Avsluttet')}`}
+			<button data-night="${n.id}" class="w-full text-left bg-slate-800 rounded-xl p-3 flex gap-3 items-center hover:ring-2 hover:ring-amber-400 ${n.status === 'open' ? '' : 'opacity-80'}">
+				${n.winner_poster ? `<div class="w-12 shrink-0 aspect-[2/3] bg-slate-700 rounded overflow-hidden">${posterTag(n.winner_poster, n.winner_title, 'w92')}</div>` : ''}
+				<div class="min-w-0 flex-1">
+					<div class="font-semibold leading-tight break-words">${esc(n.title)}</div>
+					<div class="text-sm text-slate-400">${esc(nightDate(n.date))} · ${nightWhen(n.date)}</div>
+					<div class="text-xs mt-1 ${n.status === 'open' ? 'text-emerald-300' : 'text-amber-300'}">
+						${n.status === 'open' ? `Åpen · ${n.wish_count} ønske${n.wish_count === 1 ? '' : 'r'}` : `🏆 ${esc(n.winner_title || 'Avsluttet')}`}
+						${n.yes_count ? ` · ✅ ${n.yes_count} kommer` : ''}
+					</div>
 				</div>
 			</button>`,
 			)
@@ -1990,19 +2037,27 @@ async function openNight(id) {
 	$('#nights-list-view').classList.add('hidden');
 	$('#night-view').classList.remove('hidden');
 	try {
-		const { night, wishes, max_wishes } = await api(`/api/nights/${id}`);
+		const { night, wishes, max_wishes, rsvps, users } = await api(`/api/nights/${id}`);
 		const open = night.status === 'open';
 		const winner = wishes.find((w) => w.id === night.winner_wish_id);
 		$('#night-head').innerHTML = `
 			<h2 class="text-xl font-bold">${esc(night.title)}</h2>
-			<div class="text-slate-400 text-sm">${esc(nightDate(night.date))}</div>
+			<div class="text-slate-400 text-sm">${esc(nightDate(night.date))} · ${nightWhen(night.date)}</div>
 			${night.note ? `<p class="text-sm text-slate-300 mt-1 break-words">${esc(night.note)}</p>` : ''}
-			${winner ? `<div class="mt-3 rounded-xl bg-amber-400/15 text-amber-300 p-3 text-sm">🏆 Vi ser: <b>${esc(winner.title)}</b>${winner.year ? ` (${winner.year})` : ''}</div>` : ''}
+			${
+				winner
+					? `<div class="mt-3 rounded-xl bg-amber-400/15 p-3 flex gap-3 items-center">
+				<button data-movie='${esc(JSON.stringify({ id: winner.tmdb_id, title: winner.title, year: winner.year, poster_path: winner.poster_path }))}' class="night-movie w-20 shrink-0 aspect-[2/3] bg-slate-700 rounded overflow-hidden">${posterTag(winner.poster_path, winner.title, 'w185')}</button>
+				<div class="min-w-0 text-amber-300"><div class="text-xs uppercase tracking-wide">🏆 Vi ser</div><div class="text-lg font-bold leading-tight break-words">${esc(winner.title)}</div><div class="text-sm">${winner.year || ''}</div></div>
+			</div>`
+					: ''
+			}
+			${rsvpHtml(rsvps, users)}
 			${!open && !winner ? '<div class="mt-3 text-sm text-slate-400">Kvelden er avsluttet.</div>' : ''}
 			${isAdmin ? `<div class="mt-2 flex gap-3 text-xs">${!open ? '<button data-night-reopen class="underline text-slate-300">Åpne igjen</button>' : ''}<button data-night-del class="underline text-red-400">Slett kveld</button></div>` : ''}`;
 		$('#night-add').classList.toggle('hidden', !open);
 		const mineCount = wishes.filter((w) => w.username === me).length;
-		$('#night-q').placeholder = me ? `Søk etter en film du ønsker å se… (${mineCount}/${max_wishes} brukt)` : 'Velg navnet ditt øverst for å legge inn ønsker';
+		$('#night-q').placeholder = me ? `Søk etter film… (${mineCount}/${max_wishes} ønsker)` : 'Velg navnet ditt øverst for å legge inn ønsker';
 		$('#night-wishes').innerHTML = wishes.length
 			? wishes
 					.map((w) => {
@@ -2010,14 +2065,14 @@ async function openNight(id) {
 						const isWinner = w.id === night.winner_wish_id;
 						return `
 			<div class="bg-slate-800 rounded-xl p-3 flex gap-3 ${isWinner ? 'ring-2 ring-amber-400' : ''}">
-				<button data-movie='${esc(JSON.stringify({ id: w.tmdb_id, title: w.title, year: w.year, poster_path: w.poster_path }))}' class="night-movie w-14 shrink-0 aspect-[2/3] bg-slate-700 rounded overflow-hidden">${posterTag(w.poster_path, w.title, 'w154')}</button>
+				<button data-movie='${esc(JSON.stringify({ id: w.tmdb_id, title: w.title, year: w.year, poster_path: w.poster_path }))}' class="night-movie w-20 shrink-0 aspect-[2/3] bg-slate-700 rounded overflow-hidden">${posterTag(w.poster_path, w.title, 'w185')}</button>
 				<div class="min-w-0 flex-1">
 					<div class="font-semibold leading-tight">${esc(w.title)} <span class="text-slate-400 font-normal text-sm">${w.year || ''}</span></div>
 					<div class="text-xs text-slate-400">Ønsket av ${esc(w.username)}${w.voters.length ? ` · 👍 ${w.voters.map(esc).join(', ')}` : ''}</div>
 					${w.comment ? `<p class="text-sm text-slate-300 mt-1 break-words">${esc(w.comment)}</p>` : ''}
 					${libBadge(w.library_formats)}
 					<div class="mt-2 flex items-center gap-3 text-sm">
-						${open ? `<button data-vote="${w.id}" class="rounded-full px-3 py-1 ${voted ? 'bg-amber-400 text-slate-900 font-semibold' : 'bg-slate-700'}">👍 ${w.voters.length}</button>` : `<span class="text-slate-400">👍 ${w.voters.length}</span>`}
+						${open ? `<button data-vote="${w.id}" class="rounded-full px-4 min-h-[40px] ${voted ? 'bg-amber-400 text-slate-900 font-semibold' : 'bg-slate-700'}">👍 ${w.voters.length}</button>` : `<span class="text-slate-400">👍 ${w.voters.length}</span>`}
 						${isAdmin && open ? `<button data-pick-winner="${w.id}" class="text-amber-300 underline text-xs">Velg som vinner</button>` : ''}
 						${open && (isAdmin || w.username === me) ? `<button data-wish-del="${w.id}" class="text-red-400 underline text-xs ml-auto">Slett</button>` : ''}
 					</div>
@@ -2034,7 +2089,16 @@ async function openNight(id) {
 }
 
 $('#night-head').addEventListener('click', async (e) => {
+	const movie = e.target.closest('.night-movie');
+	if (movie) return openMovie(JSON.parse(movie.dataset.movie));
 	try {
+		const rsvp = e.target.closest('[data-rsvp]');
+		if (rsvp) {
+			if (!me) return alert('Velg navnet ditt først.');
+			const status = rsvp.getAttribute('aria-pressed') === 'true' ? null : rsvp.dataset.rsvp; // trykk igjen for å ta svaret tilbake
+			await api(`/api/nights/${nightId}/rsvp`, { method: 'POST', body: JSON.stringify({ username: me, status }) });
+			return openNight(nightId);
+		}
 		if (e.target.closest('[data-night-del]')) {
 			if (!confirm('Slette hele filmkvelden med alle ønsker og stemmer?')) return;
 			await api(`/api/admin/nights/${nightId}`, { method: 'DELETE' });

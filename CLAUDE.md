@@ -30,5 +30,11 @@ kjøres i den eksterne D1-databasen `filmtips` *før* koden som bruker dem slås
 feiler appen. Eieren har ikke terminal, så Claude gir SQL-en klar til å limes inn i
 D1-konsollen i Cloudflare-dashbordet (Storage & databases → D1 → filmtips → Console), sier
 tydelig at den må kjøres først, og oppdaterer `schema.sql` i samme pull request.
+**Erfaringer med arbeidsmåten:** Cloudflare bygger også hver gren som pushes, og de grenbyggene
+feiler alltid; bare bygget for `main` teller. Eieren kan slå sammen en pull request mens Claude
+fortsatt jobber, og alt som pushes til grenen etterpå havner ikke på `main`. Sjekk
+`gh api repos/hallgeiro/filmtips/pulls/<n> --jq .merged` før en ny push, og lag ellers en ny gren
+fra `origin/main` og en ny pull request.
+
 Hemmeligheter (`TMDB_API_KEY`, `ADMIN_PASSWORD` m.fl.) settes under Settings → Variables and
 Secrets (Runtime), aldri i koden – repoet er offentlig.

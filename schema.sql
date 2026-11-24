@@ -156,3 +156,12 @@ CREATE TABLE IF NOT EXISTS wish_votes (
   PRIMARY KEY (wish_id, username)
 );
 CREATE INDEX IF NOT EXISTS idx_wishes_night ON wishes(night_id);
+
+-- Påmelding til filmkveld: ett svar per bruker per kveld (yes / maybe / no). Ikke svart = ingen rad.
+CREATE TABLE IF NOT EXISTS night_rsvps (
+  night_id   INTEGER NOT NULL,
+  username   TEXT    NOT NULL,
+  status     TEXT    NOT NULL CHECK (status IN ('yes','maybe','no')),
+  updated_at TEXT    NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (night_id, username)
+);
